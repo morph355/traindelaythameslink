@@ -99,14 +99,15 @@ network too. See `DEPLOY.md`.
 - [x] Wired into `createApp` as an opt-in `auth` option and into
       `index.ts` via `APP_USERNAME`/`APP_PASSWORD` env vars (a loud
       startup warning when unset, since that means no password at all)
-- [x] `Dockerfile` (multi-stage build) + `docker-compose.yml` -
-      build verified end-to-end outside Docker (`npm ci`, `npm run build`,
-      `npm ci --omit=dev`, running the compiled server); the actual
-      `docker build` itself hit an npm bug ("Exit handler never called")
-      specific to this dev sandbox's nested-container environment when
-      pulling images off a rate-limited registry connection - flagged in
-      `DEPLOY.md` to confirm on a real Synology, since that's a normal
-      unrestricted Docker host
+- [x] `Dockerfile` (multi-stage build) + `docker-compose.yml` - built and
+      ran successfully in this dev sandbox once the root cause of an
+      earlier failure was found: this sandbox intercepts outbound HTTPS
+      with its own proxy CA, which the host shell trusts but a fresh
+      Docker container doesn't, so `npm ci` inside the build hit
+      `SELF_SIGNED_CERT_IN_CHAIN` against registry.npmjs.org. That's a
+      sandbox-only artifact - a real Synology has normal direct internet
+      access, so this shouldn't occur there, but worth a first-build
+      check anyway
 - [x] `DEPLOY.md`: Container Manager setup, reverse proxy + Let's
       Encrypt for external HTTPS access, why no inbound mail port is
       needed
