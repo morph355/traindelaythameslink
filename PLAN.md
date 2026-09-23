@@ -71,6 +71,37 @@ rules are unit tested without hitting the network or a fake HTTP layer.
    alternatives evidence, plus a link to submit at
    delayrepay.thameslinkrailway.com within 28 days.
 
+## Ticket ingestion (TrainPal forwarding)
+
+TrainPal booking confirmations (PDF e-tickets) get forwarded to a
+dedicated AgentMail inbox (`thameslink-tickets@agentmail.to`) rather than
+the user's own mailbox, keeping this app's mail access scoped to just
+that. The self-hosted server polls it on demand (a "check for new
+tickets" action, not a background cron) via the official `agentmail`
+npm SDK:
+
+```
+src/tickets/
+  agentmailClient.ts   list candidate ticket emails (sender match + has a
+                        PDF attachment), download an attachment's bytes
+  pdfText.ts            extract plain text from a PDF buffer (pdf-parse v2 -
+                         note its API is a `PDFParse` class with `.getText()`,
+                         not the old v1 default-export-function shape; the
+                         separately-published @types/pdf-parse package is
+                         for v1 and does not match - use the types pdf-parse
+                         itself ships)
+  trainpal.ts            [not yet built] parse TrainPal's extracted PDF text
+                         into journey fields (from/to, date, time, split-leg
+                         boundary if shown)
+```
+
+`trainpal.ts` needs a real sample forwarded to the inbox before it can be
+written with any confidence - TrainPal's PDF layout isn't something to
+guess at reliably from extracted text (no fixed column/label positions
+are known yet). Once one arrives, inspect it directly (this session has
+live AgentMail access) to build and unit-test the parser against real
+text, not assumptions.
+
 ## Explicitly out of scope for v1
 
 - Auto-submitting the claim itself (no public API for this; would need

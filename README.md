@@ -43,6 +43,15 @@ The page has three parts:
   Thameslink's site load in the frame, there's an "open in a new tab"
   fallback link above it.
 
+## Ticket forwarding (in progress)
+
+Forward TrainPal booking confirmations to `thameslink-tickets@agentmail.to`
+and the app will (eventually) read the journey off the attached PDF
+instead of you typing it in. The inbox exists and the pieces that fetch
+and read the PDF are built and tested; the part that turns TrainPal's
+specific layout into journey fields is still pending a real sample to
+build against - see `BACKLOG.md` Epic 5.
+
 ## Testing
 
 ```
@@ -58,4 +67,6 @@ npm test
 - `src/engine/` — pure delay/eligibility/alternatives-evidence logic
 - `src/server/` — Express app (static page + `POST /api/check` and
   `POST /api/check-commute` JSON APIs)
+- `src/tickets/` — AgentMail client + PDF text extraction for the
+  TrainPal-forwarding workflow (see above)
 - `public/` — the web page

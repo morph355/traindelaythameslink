@@ -74,6 +74,21 @@ form without retyping them.
 - [ ] Try it against a real delayed journey once RTT credentials are set
       up
 
+## Epic 5 — Ticket ingestion from TrainPal ([#5](https://github.com/morph355/traindelaythameslink/issues/5))
+
+Forward TrainPal booking-confirmation emails to a dedicated inbox and
+have the app read the journey off the attached PDF, instead of typing it
+in by hand. See `PLAN.md`.
+
+- [x] Dedicated AgentMail inbox (`thameslink-tickets@agentmail.to`)
+- [x] `src/tickets/agentmailClient.ts`: list candidate ticket emails
+      (sender match + PDF attachment present), download attachment bytes
+- [x] `src/tickets/pdfText.ts`: extract plain text from a PDF buffer
+- [ ] `src/tickets/trainpal.ts`: parse extracted text into journey
+      fields - blocked on a real forwarded sample to build against
+- [ ] Server: "check for new tickets" endpoint + UI list of parsed
+      journeys that pre-fill the checker (one click, no auto-submit)
+
 ## Explicitly not planned
 
 - Auto-submitting claims (no public API; out of scope, see `PLAN.md`)
