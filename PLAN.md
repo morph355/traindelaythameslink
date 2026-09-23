@@ -71,6 +71,18 @@ rules are unit tested without hitting the network or a fake HTTP layer.
    alternatives evidence, plus a link to submit at
    delayrepay.thameslinkrailway.com within 28 days.
 
+## Deployment target
+
+Runs long-term on a Synology NAS (Docker via Container Manager), not just
+a laptop, so it's available whenever a delay needs checking. Because
+email is handled by AgentMail's cloud inbox rather than received by the
+app itself, the NAS side only ever needs outbound HTTPS - no inbound mail
+port. Optionally reachable outside the home network via Synology's
+reverse proxy; since the app has no other login, `APP_USERNAME`/
+`APP_PASSWORD` (HTTP Basic Auth, `src/server/basicAuth.ts`) gate every
+route whenever those are set, and `index.ts` warns loudly on startup if
+they're not - see `DEPLOY.md`.
+
 ## Ticket ingestion (TrainPal forwarding)
 
 TrainPal booking confirmations (PDF e-tickets) get forwarded to a

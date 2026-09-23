@@ -12,8 +12,20 @@ if (!username || !password) {
   process.exit(1);
 }
 
+const authUsername = process.env.APP_USERNAME;
+const authPassword = process.env.APP_PASSWORD;
+const auth = authUsername && authPassword ? { username: authUsername, password: authPassword } : undefined;
+
+if (!auth) {
+  console.warn(
+    "APP_USERNAME/APP_PASSWORD are not set - this app has NO password protection. " +
+      "That's fine on your home LAN, but do not expose it to the internet (e.g. via a " +
+      "reverse proxy) without setting both.",
+  );
+}
+
 const client = new RttClient({ username, password });
-const app = createApp(client);
+const app = createApp(client, { auth });
 const port = Number(process.env.PORT ?? 3000);
 
 app.listen(port, () => {

@@ -85,6 +85,28 @@ describe("POST /api/check", () => {
   });
 });
 
+describe("auth option", () => {
+  it("leaves the app open when no auth is configured", async () => {
+    const app = createApp(fakeClient(search, { TAKEN: takenService }));
+    const response = await request(app).get("/api/commute");
+    expect(response.status).toBe(200);
+  });
+
+  it("requires HTTP Basic Auth when auth is configured", async () => {
+    const app = createApp(fakeClient(search, { TAKEN: takenService }), {
+      auth: { username: "alice", password: "s3cret" },
+    });
+
+    const unauthed = await request(app).get("/api/commute");
+    expect(unauthed.status).toBe(401);
+
+    const authed = await request(app)
+      .get("/api/commute")
+      .set("Authorization", `Basic ${Buffer.from("alice:s3cret").toString("base64")}`);
+    expect(authed.status).toBe(200);
+  });
+});
+
 describe("GET /api/commute", () => {
   it("serves the commute config for the front-end", async () => {
     const app = createApp(fakeClient(search, { TAKEN: takenService }));

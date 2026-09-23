@@ -89,6 +89,28 @@ in by hand. See `PLAN.md`.
 - [ ] Server: "check for new tickets" endpoint + UI list of parsed
       journeys that pre-fill the checker (one click, no auto-submit)
 
+## Epic 6 — Always-on deployment (Synology) ([#6](https://github.com/morph355/traindelaythameslink/issues/6))
+
+Run this on a NAS instead of a laptop, reachable from outside the home
+network too. See `DEPLOY.md`.
+
+- [x] `src/server/basicAuth.ts`: timing-safe HTTP Basic Auth middleware,
+      unit tested
+- [x] Wired into `createApp` as an opt-in `auth` option and into
+      `index.ts` via `APP_USERNAME`/`APP_PASSWORD` env vars (a loud
+      startup warning when unset, since that means no password at all)
+- [x] `Dockerfile` (multi-stage build) + `docker-compose.yml` -
+      build verified end-to-end outside Docker (`npm ci`, `npm run build`,
+      `npm ci --omit=dev`, running the compiled server); the actual
+      `docker build` itself hit an npm bug ("Exit handler never called")
+      specific to this dev sandbox's nested-container environment when
+      pulling images off a rate-limited registry connection - flagged in
+      `DEPLOY.md` to confirm on a real Synology, since that's a normal
+      unrestricted Docker host
+- [x] `DEPLOY.md`: Container Manager setup, reverse proxy + Let's
+      Encrypt for external HTTPS access, why no inbound mail port is
+      needed
+
 ## Explicitly not planned
 
 - Auto-submitting claims (no public API; out of scope, see `PLAN.md`)

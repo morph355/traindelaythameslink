@@ -43,6 +43,14 @@ The page has three parts:
   Thameslink's site load in the frame, there's an "open in a new tab"
   fallback link above it.
 
+## Deploying it somewhere always-on
+
+For running this on a NAS (or any always-on box) instead of your laptop,
+see [`DEPLOY.md`](DEPLOY.md) - it covers Docker (`Dockerfile` +
+`docker-compose.yml` are included) and, if you want it reachable outside
+your home network, Synology's reverse proxy + the `APP_USERNAME`/
+`APP_PASSWORD` password gate that guards every route when set.
+
 ## Ticket forwarding (in progress)
 
 Forward TrainPal booking confirmations to `thameslink-tickets@agentmail.to`

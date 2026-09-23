@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { basicAuth } from "./basicAuth.js";
 import { COMMUTE } from "../config/commute.js";
 import type { RttClient } from "../rtt/client.js";
 import { NoMatchingServiceError, checkLeg } from "../rtt/checkLeg.js";
@@ -11,8 +12,16 @@ import { ValidationError, parseLegs, type RawLegInput } from "./parseLegs.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "..", "public");
 
-export function createApp(client: RttClient): Express {
+export interface CreateAppOptions {
+  /** When set, every route requires this HTTP Basic Auth login. Required if the app is reachable outside your LAN. */
+  auth?: { username: string; password: string };
+}
+
+export function createApp(client: RttClient, options: CreateAppOptions = {}): Express {
   const app = express();
+  if (options.auth) {
+    app.use(basicAuth(options.auth.username, options.auth.password));
+  }
   app.use(express.json());
   app.use(express.static(PUBLIC_DIR));
 
