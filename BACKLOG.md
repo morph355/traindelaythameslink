@@ -53,8 +53,27 @@ This applies to every story below, including ones already checked off.
 - [ ] Revisit Darwin HSP as a second/fallback data source if RTT data
       proves unreliable for a real claim
 
+## Epic 4 — Regular commute + claim-form assist ([#4](https://github.com/morph355/traindelaythameslink/issues/4))
+
+Outbound (Brighton→London Bridge via Gatwick Airport, split-save) runs on
+a fixed pair of trains on Mon/Wed; return is ad hoc. One-click checking
+for outbound, plus a workflow to get the numbers into the official claim
+form without retyping them.
+
+- [x] `src/config/commute.ts`: route, split point, and preset outbound
+      times, editable without touching app code
+- [x] `checkSplitJourney`: resolve the through service once and derive
+      both split-ticket legs' performance from it (only one departure
+      time needed, not one per ticket)
+- [x] `GET /api/commute` + `POST /api/check-commute` endpoints
+- [x] UI: one-click outbound presets (06:39/06:56), manual time entry for
+      the less predictable return, Today/Yesterday date shortcuts
+- [x] UI: Thameslink's Delay Repay form embedded alongside the results
+      (with an "open in new tab" fallback), and a "copy claim details"
+      button per leg result
+- [ ] Try it against a real delayed journey once RTT credentials are set
+      up
+
 ## Explicitly not planned
 
 - Auto-submitting claims (no public API; out of scope, see `PLAN.md`)
-- Monitoring a fixed/recurring commute (travel isn't regular enough to
-  justify it currently)

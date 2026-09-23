@@ -17,9 +17,9 @@ export class ValidationError extends Error {
   }
 }
 
-const CRS_PATTERN = /^[A-Za-z]{3}$/;
-const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const TIME_PATTERN = /^(\d{2}):?(\d{2})$/;
+export const CRS_PATTERN = /^[A-Za-z]{3}$/;
+export const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+export const TIME_PATTERN = /^(\d{2}):?(\d{2})$/;
 
 function parseOneLeg(raw: RawLegInput, index: number, issues: string[]): Leg | undefined {
   const label = `Leg ${index + 1}`;

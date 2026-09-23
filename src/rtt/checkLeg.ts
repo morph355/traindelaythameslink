@@ -4,7 +4,7 @@ import { findAlternativeCandidates, findClosestService, toServicePerformance } f
 import type { RttClient } from "./client.js";
 
 /** Cap on how many alternative services get an extra API call, to keep this fast and polite to the API. */
-const MAX_ALTERNATIVES_CHECKED = 5;
+export const MAX_ALTERNATIVES_CHECKED = 5;
 
 export class NoMatchingServiceError extends Error {
   constructor(leg: Leg) {

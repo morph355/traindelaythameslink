@@ -5,78 +5,259 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Thameslink Delay Repay checker</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
-  h1 { font-size: 1.4rem; }
-  fieldset { margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 6px; }
-  legend { padding: 0 0.4rem; font-weight: 600; }
-  label { display: block; font-size: 0.85rem; margin-top: 0.5rem; }
-  input { width: 100%; padding: 0.4rem; box-sizing: border-box; margin-top: 0.15rem; }
-  .row { display: flex; gap: 0.6rem; }
-  .row > div { flex: 1; }
-  button { padding: 0.5rem 1rem; margin-top: 0.5rem; cursor: pointer; }
-  #results { margin-top: 1.5rem; }
-  .leg-result { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    padding: 1rem;
+    color: #1a1a1a;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+  @media (min-width: 900px) {
+    body { grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr); align-items: start; }
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 0.25rem; }
+  h2 { font-size: 1.05rem; margin: 1.25rem 0 0.5rem; }
+  p.lede { color: #444; margin-top: 0; }
+  .panel { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+  .row { display: flex; gap: 0.6rem; align-items: flex-end; flex-wrap: wrap; }
+  label { display: block; font-size: 0.8rem; color: #333; }
+  input { padding: 0.45rem; font-size: 1rem; }
+  button { padding: 0.55rem 1rem; font-size: 0.95rem; cursor: pointer; border-radius: 6px; border: 1px solid #999; background: #f4f4f4; }
+  button.primary { background: #1a5fb4; color: white; border-color: #1a5fb4; font-weight: 600; }
+  button.preset { font-size: 1.05rem; padding: 0.7rem 1.1rem; }
+  button:hover { filter: brightness(0.96); }
+  .leg-result { border: 1px solid #ccc; border-radius: 6px; padding: 0.9rem; margin-bottom: 0.75rem; }
   .eligible { border-left: 6px solid #2e7d32; }
   .not-eligible { border-left: 6px solid #999; }
   .error { color: #b00020; white-space: pre-wrap; }
-  ul.evidence { font-size: 0.85rem; color: #444; }
+  ul.evidence { font-size: 0.85rem; color: #444; margin: 0.4rem 0; }
+  .copy-btn { margin-top: 0.5rem; }
+  .copy-btn.copied { background: #2e7d32; color: white; border-color: #2e7d32; }
+  details summary { cursor: pointer; font-weight: 600; margin-bottom: 0.5rem; }
+  .leg { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 0.75rem; }
+  .frame-pane { position: sticky; top: 1rem; }
+  iframe { width: 100%; height: 75vh; border: 1px solid #ccc; border-radius: 8px; }
+  .muted { color: #666; font-size: 0.85rem; }
 </style>
 </head>
 <body>
-<h1>Thameslink Delay Repay checker</h1>
-<p>Enter each ticket leg for the delayed journey (a split-save journey is two legs). Uses actual train performance data from Realtime Trains, and checks nearby alternative services so you have evidence either way.</p>
+<main>
+  <h1>Thameslink Delay Repay checker</h1>
+  <p class="lede" id="route-description">Loading your commute...</p>
 
-<form id="journey-form">
-  <div id="legs"></div>
-  <button type="button" id="add-leg">+ Add another leg (split ticket)</button>
-  <br />
-  <button type="submit">Check eligibility</button>
-</form>
+  <div class="panel">
+    <h2>Today's journey</h2>
+    <div class="row">
+      <div>
+        <label>Date</label>
+        <input type="date" id="journey-date" />
+      </div>
+      <button type="button" id="date-today">Today</button>
+      <button type="button" id="date-yesterday">Yesterday</button>
+    </div>
 
-<div id="results"></div>
+    <h2 style="margin-top:1rem">Outbound (morning)</h2>
+    <div class="row" id="outbound-presets"></div>
 
-<template id="leg-template">
+    <h2>Return (afternoon/evening)</h2>
+    <p class="muted">Your return varies, so pick the time you actually left.</p>
+    <div class="row">
+      <div>
+        <label>Departure time</label>
+        <input type="time" id="return-time" />
+      </div>
+      <button type="button" class="primary" id="check-return">Check return journey</button>
+    </div>
+
+    <div id="commute-results"></div>
+  </div>
+
+  <details class="panel">
+    <summary>Different journey (one-off / custom)</summary>
+    <form id="custom-form">
+      <div id="custom-legs"></div>
+      <button type="button" id="custom-add-leg">+ Add another leg (split ticket)</button>
+      <br /><br />
+      <button type="submit" class="primary">Check eligibility</button>
+    </form>
+    <div id="custom-results"></div>
+  </details>
+</main>
+
+<aside class="frame-pane">
+  <h2 style="margin-top:0">Thameslink Delay Repay form</h2>
+  <p class="muted">
+    Copy the details from a result on the left into this form. If it doesn't load below (some
+    sites block being framed), use
+    <a href="https://delayrepay.thameslinkrailway.com/" target="_blank" rel="noopener">open it in a new tab ↗</a>.
+  </p>
+  <iframe id="delay-repay-frame" src="https://delayrepay.thameslinkrailway.com/" loading="lazy"
+    referrerpolicy="no-referrer"></iframe>
+</aside>
+
+<template id="custom-leg-template">
   <fieldset class="leg">
     <legend>Leg</legend>
     <div class="row">
-      <div>
-        <label>From (CRS code, e.g. STP)<input name="fromCrs" maxlength="3" required /></label>
-      </div>
-      <div>
-        <label>To (CRS code, e.g. BTN)<input name="toCrs" maxlength="3" required /></label>
-      </div>
+      <div><label>From (CRS)<input name="fromCrs" maxlength="3" required /></label></div>
+      <div><label>To (CRS)<input name="toCrs" maxlength="3" required /></label></div>
     </div>
     <div class="row">
-      <div>
-        <label>Date<input name="date" type="date" required /></label>
-      </div>
-      <div>
-        <label>Booked departure time<input name="bookedDepartureTime" type="time" required /></label>
-      </div>
+      <div><label>Date<input name="date" type="date" required /></label></div>
+      <div><label>Booked departure<input name="bookedDepartureTime" type="time" required /></label></div>
     </div>
-    <label>Ticket label (optional)<input name="ticketLabel" placeholder="e.g. Off-Peak Single St Pancras-Three Bridges" /></label>
-    <button type="button" class="remove-leg">Remove this leg</button>
+    <label>Ticket label (optional)<input name="ticketLabel" placeholder="e.g. Off-Peak Single" /></label>
+    <button type="button" class="remove-leg" style="margin:0.5rem 0">Remove this leg</button>
   </fieldset>
 </template>
 
 <script>
-  const legsContainer = document.getElementById("legs");
-  const legTemplate = document.getElementById("leg-template");
+  let commuteConfig = null;
+  const resultStore = [];
 
-  function addLeg() {
-    const fragment = legTemplate.content.cloneNode(true);
-    fragment.querySelector(".remove-leg").addEventListener("click", (e) => {
-      if (legsContainer.children.length > 1) e.target.closest(".leg").remove();
-    });
-    legsContainer.appendChild(fragment);
+  function fmtDate(d) {
+    return d.toISOString().slice(0, 10);
   }
 
-  document.getElementById("add-leg").addEventListener("click", addLeg);
-  addLeg();
+  function setDate(d) {
+    document.getElementById("journey-date").value = fmtDate(d);
+  }
 
-  document.getElementById("journey-form").addEventListener("submit", async (e) => {
+  document.getElementById("date-today").addEventListener("click", () => setDate(new Date()));
+  document.getElementById("date-yesterday").addEventListener("click", () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    setDate(d);
+  });
+  setDate(new Date());
+
+  async function loadCommuteConfig() {
+    const res = await fetch("/api/commute");
+    commuteConfig = await res.json();
+
+    document.getElementById("route-description").textContent =
+      `${commuteConfig.fromName} ↔ ${commuteConfig.viaName} ↔ ${commuteConfig.toName}, split-ticket at ${commuteConfig.viaName}.`;
+
+    const container = document.getElementById("outbound-presets");
+    container.innerHTML = "";
+    for (const preset of commuteConfig.outboundPresets) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "preset primary";
+      btn.textContent = preset.label;
+      btn.addEventListener("click", () => runCommuteCheck("outbound", preset.time));
+      container.appendChild(btn);
+    }
+  }
+
+  document.getElementById("check-return").addEventListener("click", () => {
+    const time = document.getElementById("return-time").value;
+    if (!time) {
+      alert("Enter the time you left.");
+      return;
+    }
+    runCommuteCheck("return", time.replace(":", ""));
+  });
+
+  async function runCommuteCheck(direction, time) {
+    const date = document.getElementById("journey-date").value;
+    const resultsEl = document.getElementById("commute-results");
+    resultsEl.innerHTML = "<p>Checking...</p>";
+    try {
+      const response = await fetch("/api/check-commute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction, date, time }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        resultsEl.innerHTML = `<p class="error">${(body.issues || [body.error]).join("\n")}</p>`;
+        return;
+      }
+      resultsEl.innerHTML = body.results.map(storeAndRenderLegResult).join("");
+      attachCopyHandlers(resultsEl);
+    } catch (err) {
+      resultsEl.innerHTML = `<p class="error">${err.message}</p>`;
+    }
+  }
+
+  function storeAndRenderLegResult(r) {
+    const index = resultStore.push(r) - 1;
+    return renderLegResult(r, index);
+  }
+
+  function renderLegResult(r, index) {
+    const cls = r.compensation.eligible ? "eligible" : "not-eligible";
+    const evidence = r.alternatives.lines.length
+      ? `<ul class="evidence">${r.alternatives.lines.map((l) => `<li>${l}</li>`).join("")}</ul>`
+      : "<p class=\"muted\">No alternative services found to check.</p>";
+    const altNote = r.alternatives.fasterAlternativeFound
+      ? `<p><strong>Note:</strong> a faster alternative (${r.alternatives.bestAlternativeArrival}) existed, ${r.alternatives.minutesEarlierThanTaken} min earlier than the service taken. Consider this before claiming.</p>`
+      : `<p class="muted">Checked ${r.alternatives.checkedCount} alternative service(s) — none arrived earlier than the service you took.</p>`;
+
+    return `
+      <div class="leg-result ${cls}">
+        <h3 style="margin-top:0">${r.leg.fromCrs} &rarr; ${r.leg.toCrs}${r.leg.ticketLabel ? ` (${r.leg.ticketLabel})` : ""}</h3>
+        <p>Service ${r.taken.serviceUid}: scheduled arrival ${r.taken.scheduledArrival}, actual arrival ${r.taken.actualArrival} &mdash; <strong>${r.delayMinutes} min late</strong></p>
+        <p><strong>${r.compensation.eligible ? "Eligible" : "Not eligible"}</strong> &mdash; ${r.compensation.label}${r.compensation.eligible ? ` (${r.compensation.percentOfFare}% of this ticket's fare)` : ""}</p>
+        ${altNote}
+        ${evidence}
+        <button type="button" class="copy-btn" data-index="${index}">Copy claim details</button>
+        ${r.compensation.eligible ? ' <a href="https://delayrepay.thameslinkrailway.com/" target="_blank" rel="noopener">Open claim form ↗</a>' : ""}
+      </div>`;
+  }
+
+  function claimSummaryText(r) {
+    return [
+      `${r.leg.fromCrs} to ${r.leg.toCrs}${r.leg.ticketLabel ? ` (${r.leg.ticketLabel})` : ""}`,
+      `Service: ${r.taken.serviceUid}`,
+      `Scheduled arrival: ${r.taken.scheduledArrival}`,
+      `Actual arrival: ${r.taken.actualArrival}`,
+      `Delay: ${r.delayMinutes} minutes`,
+      `${r.compensation.eligible ? "Eligible" : "Not eligible"} — ${r.compensation.label}`,
+    ].join("\n");
+  }
+
+  function attachCopyHandlers(container) {
+    container.querySelectorAll(".copy-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const r = resultStore[Number(btn.dataset.index)];
+        const text = claimSummaryText(r);
+        try {
+          await navigator.clipboard.writeText(text);
+          btn.textContent = "Copied!";
+          btn.classList.add("copied");
+          setTimeout(() => {
+            btn.textContent = "Copy claim details";
+            btn.classList.remove("copied");
+          }, 1500);
+        } catch {
+          window.prompt("Copy this text:", text);
+        }
+      });
+    });
+  }
+
+  // --- Custom / one-off journey form (unchanged behaviour, own namespace) ---
+  const customLegsContainer = document.getElementById("custom-legs");
+  const customLegTemplate = document.getElementById("custom-leg-template");
+
+  function addCustomLeg() {
+    const fragment = customLegTemplate.content.cloneNode(true);
+    fragment.querySelector(".remove-leg").addEventListener("click", (e) => {
+      if (customLegsContainer.children.length > 1) e.target.closest(".leg").remove();
+    });
+    customLegsContainer.appendChild(fragment);
+  }
+  document.getElementById("custom-add-leg").addEventListener("click", addCustomLeg);
+  addCustomLeg();
+
+  document.getElementById("custom-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const legs = [...legsContainer.querySelectorAll(".leg")].map((fieldset) => ({
+    const legs = [...customLegsContainer.querySelectorAll(".leg")].map((fieldset) => ({
       fromCrs: fieldset.querySelector('[name="fromCrs"]').value,
       toCrs: fieldset.querySelector('[name="toCrs"]').value,
       date: fieldset.querySelector('[name="date"]').value,
@@ -84,9 +265,8 @@
       ticketLabel: fieldset.querySelector('[name="ticketLabel"]').value,
     }));
 
-    const results = document.getElementById("results");
-    results.innerHTML = "<p>Checking...</p>";
-
+    const resultsEl = document.getElementById("custom-results");
+    resultsEl.innerHTML = "<p>Checking...</p>";
     try {
       const response = await fetch("/api/check", {
         method: "POST",
@@ -94,37 +274,18 @@
         body: JSON.stringify({ legs }),
       });
       const body = await response.json();
-
       if (!response.ok) {
-        results.innerHTML = `<p class="error">${(body.issues || [body.error]).join("\n")}</p>`;
+        resultsEl.innerHTML = `<p class="error">${(body.issues || [body.error]).join("\n")}</p>`;
         return;
       }
-
-      results.innerHTML = body.results.map(renderLegResult).join("");
+      resultsEl.innerHTML = body.results.map(storeAndRenderLegResult).join("");
+      attachCopyHandlers(resultsEl);
     } catch (err) {
-      results.innerHTML = `<p class="error">${err.message}</p>`;
+      resultsEl.innerHTML = `<p class="error">${err.message}</p>`;
     }
   });
 
-  function renderLegResult(r) {
-    const cls = r.compensation.eligible ? "eligible" : "not-eligible";
-    const evidence = r.alternatives.lines.length
-      ? `<ul class="evidence">${r.alternatives.lines.map((l) => `<li>${l}</li>`).join("")}</ul>`
-      : "<p><em>No alternative services found to check.</em></p>";
-    const altNote = r.alternatives.fasterAlternativeFound
-      ? `<p><strong>Note:</strong> a faster alternative (${r.alternatives.bestAlternativeArrival}) existed, ${r.alternatives.minutesEarlierThanTaken} min earlier than the service taken. Consider this before claiming.</p>`
-      : `<p>Checked ${r.alternatives.checkedCount} alternative service(s) around your departure time - none arrived earlier than the service you took.</p>`;
-
-    return `
-      <div class="leg-result ${cls}">
-        <h3>${r.leg.fromCrs} &rarr; ${r.leg.toCrs} (${r.leg.ticketLabel || "no label"})</h3>
-        <p>Service ${r.taken.serviceUid}: scheduled arrival ${r.taken.scheduledArrival}, actual arrival ${r.taken.actualArrival} &mdash; <strong>${r.delayMinutes} min late</strong></p>
-        <p><strong>${r.compensation.eligible ? "Eligible" : "Not eligible"}</strong> &mdash; ${r.compensation.label}${r.compensation.eligible ? ` (${r.compensation.percentOfFare}% of this ticket's fare)` : ""}</p>
-        ${altNote}
-        ${evidence}
-        ${r.compensation.eligible ? '<p>Submit within 28 days at <a href="https://delayrepay.thameslinkrailway.com/" target="_blank" rel="noopener">delayrepay.thameslinkrailway.com</a>.</p>' : ""}
-      </div>`;
-  }
+  loadCommuteConfig();
 </script>
 </body>
 </html>
