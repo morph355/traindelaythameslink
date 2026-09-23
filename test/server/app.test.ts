@@ -1,0 +1,86 @@
+import { describe, expect, it, vi } from "vitest";
+import request from "supertest";
+import { createApp } from "../../src/server/app.js";
+import type { RttClient } from "../../src/rtt/client.js";
+import type { RttSearchResponse, RttServiceResponse } from "../../src/rtt/types.js";
+
+function fakeClient(
+  search: RttSearchResponse,
+  servicesByUid: Record<string, RttServiceResponse>,
+): RttClient {
+  return {
+    searchStationToStation: vi.fn().mockResolvedValue(search),
+    getService: vi.fn(async (uid: string) => servicesByUid[uid]),
+  } as unknown as RttClient;
+}
+
+const takenService: RttServiceResponse = {
+  serviceUid: "TAKEN",
+  runDate: "2026-09-23",
+  atocCode: "TL",
+  atocName: "Thameslink",
+  locations: [
+    { crs: "STP", description: "St Pancras", gbttBookedDeparture: "0812" },
+    {
+      crs: "BTN",
+      description: "Brighton",
+      gbttBookedArrival: "0910",
+      realtimeArrival: "0932",
+      realtimeArrivalActual: true,
+    },
+  ],
+};
+
+const search: RttSearchResponse = {
+  location: { name: "St Pancras", crs: "STP" },
+  services: [
+    {
+      serviceUid: "TAKEN",
+      runDate: "2026-09-23",
+      atocCode: "TL",
+      atocName: "Thameslink",
+      serviceType: "train",
+      isPassenger: true,
+      locationDetail: { gbttBookedDeparture: "0812", origin: [], destination: [] },
+    },
+  ],
+};
+
+describe("POST /api/check", () => {
+  it("returns 400 with issues for invalid input", async () => {
+    const app = createApp(fakeClient(search, { TAKEN: takenService }));
+
+    const response = await request(app).post("/api/check").send({ legs: [] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.issues).toContain("At least one leg is required");
+  });
+
+  it("returns eligibility results for a valid delayed leg", async () => {
+    const app = createApp(fakeClient(search, { TAKEN: takenService }));
+
+    const response = await request(app)
+      .post("/api/check")
+      .send({
+        legs: [{ fromCrs: "STP", toCrs: "BTN", date: "2026-09-23", bookedDepartureTime: "0812" }],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.results).toHaveLength(1);
+    expect(response.body.results[0].delayMinutes).toBe(22);
+    expect(response.body.results[0].compensation.eligible).toBe(true);
+  });
+
+  it("returns 404 when no matching service is found", async () => {
+    const emptySearch: RttSearchResponse = { location: { name: "St Pancras", crs: "STP" }, services: [] };
+    const app = createApp(fakeClient(emptySearch, {}));
+
+    const response = await request(app)
+      .post("/api/check")
+      .send({
+        legs: [{ fromCrs: "STP", toCrs: "BTN", date: "2026-09-23", bookedDepartureTime: "0812" }],
+      });
+
+    expect(response.status).toBe(404);
+  });
+});

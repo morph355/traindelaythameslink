@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Thameslink Delay Repay checker</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { font-size: 1.4rem; }
+  fieldset { margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 6px; }
+  legend { padding: 0 0.4rem; font-weight: 600; }
+  label { display: block; font-size: 0.85rem; margin-top: 0.5rem; }
+  input { width: 100%; padding: 0.4rem; box-sizing: border-box; margin-top: 0.15rem; }
+  .row { display: flex; gap: 0.6rem; }
+  .row > div { flex: 1; }
+  button { padding: 0.5rem 1rem; margin-top: 0.5rem; cursor: pointer; }
+  #results { margin-top: 1.5rem; }
+  .leg-result { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
+  .eligible { border-left: 6px solid #2e7d32; }
+  .not-eligible { border-left: 6px solid #999; }
+  .error { color: #b00020; white-space: pre-wrap; }
+  ul.evidence { font-size: 0.85rem; color: #444; }
+</style>
+</head>
+<body>
+<h1>Thameslink Delay Repay checker</h1>
+<p>Enter each ticket leg for the delayed journey (a split-save journey is two legs). Uses actual train performance data from Realtime Trains, and checks nearby alternative services so you have evidence either way.</p>
+
+<form id="journey-form">
+  <div id="legs"></div>
+  <button type="button" id="add-leg">+ Add another leg (split ticket)</button>
+  <br />
+  <button type="submit">Check eligibility</button>
+</form>
+
+<div id="results"></div>
+
+<template id="leg-template">
+  <fieldset class="leg">
+    <legend>Leg</legend>
+    <div class="row">
+      <div>
+        <label>From (CRS code, e.g. STP)<input name="fromCrs" maxlength="3" required /></label>
+      </div>
+      <div>
+        <label>To (CRS code, e.g. BTN)<input name="toCrs" maxlength="3" required /></label>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Date<input name="date" type="date" required /></label>
+      </div>
+      <div>
+        <label>Booked departure time<input name="bookedDepartureTime" type="time" required /></label>
+      </div>
+    </div>
+    <label>Ticket label (optional)<input name="ticketLabel" placeholder="e.g. Off-Peak Single St Pancras-Three Bridges" /></label>
+    <button type="button" class="remove-leg">Remove this leg</button>
+  </fieldset>
+</template>
+
+<script>
+  const legsContainer = document.getElementById("legs");
+  const legTemplate = document.getElementById("leg-template");
+
+  function addLeg() {
+    const fragment = legTemplate.content.cloneNode(true);
+    fragment.querySelector(".remove-leg").addEventListener("click", (e) => {
+      if (legsContainer.children.length > 1) e.target.closest(".leg").remove();
+    });
+    legsContainer.appendChild(fragment);
+  }
+
+  document.getElementById("add-leg").addEventListener("click", addLeg);
+  addLeg();
+
+  document.getElementById("journey-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const legs = [...legsContainer.querySelectorAll(".leg")].map((fieldset) => ({
+      fromCrs: fieldset.querySelector('[name="fromCrs"]').value,
+      toCrs: fieldset.querySelector('[name="toCrs"]').value,
+      date: fieldset.querySelector('[name="date"]').value,
+      bookedDepartureTime: fieldset.querySelector('[name="bookedDepartureTime"]').value,
+      ticketLabel: fieldset.querySelector('[name="ticketLabel"]').value,
+    }));
+
+    const results = document.getElementById("results");
+    results.innerHTML = "<p>Checking...</p>";
+
+    try {
+      const response = await fetch("/api/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ legs }),
+      });
+      const body = await response.json();
+
+      if (!response.ok) {
+        results.innerHTML = `<p class="error">${(body.issues || [body.error]).join("\n")}</p>`;
+        return;
+      }
+
+      results.innerHTML = body.results.map(renderLegResult).join("");
+    } catch (err) {
+      results.innerHTML = `<p class="error">${err.message}</p>`;
+    }
+  });
+
+  function renderLegResult(r) {
+    const cls = r.compensation.eligible ? "eligible" : "not-eligible";
+    const evidence = r.alternatives.lines.length
+      ? `<ul class="evidence">${r.alternatives.lines.map((l) => `<li>${l}</li>`).join("")}</ul>`
+      : "<p><em>No alternative services found to check.</em></p>";
+    const altNote = r.alternatives.fasterAlternativeFound
+      ? `<p><strong>Note:</strong> a faster alternative (${r.alternatives.bestAlternativeArrival}) existed, ${r.alternatives.minutesEarlierThanTaken} min earlier than the service taken. Consider this before claiming.</p>`
+      : `<p>Checked ${r.alternatives.checkedCount} alternative service(s) around your departure time - none arrived earlier than the service you took.</p>`;
+
+    return `
+      <div class="leg-result ${cls}">
+        <h3>${r.leg.fromCrs} &rarr; ${r.leg.toCrs} (${r.leg.ticketLabel || "no label"})</h3>
+        <p>Service ${r.taken.serviceUid}: scheduled arrival ${r.taken.scheduledArrival}, actual arrival ${r.taken.actualArrival} &mdash; <strong>${r.delayMinutes} min late</strong></p>
+        <p><strong>${r.compensation.eligible ? "Eligible" : "Not eligible"}</strong> &mdash; ${r.compensation.label}${r.compensation.eligible ? ` (${r.compensation.percentOfFare}% of this ticket's fare)` : ""}</p>
+        ${altNote}
+        ${evidence}
+        ${r.compensation.eligible ? '<p>Submit within 28 days at <a href="https://delayrepay.thameslinkrailway.com/" target="_blank" rel="noopener">delayrepay.thameslinkrailway.com</a>.</p>' : ""}
+      </div>`;
+  }
+</script>
+</body>
+</html>
