@@ -48,8 +48,15 @@ Only do this once `APP_USERNAME`/`APP_PASSWORD` are set in `.env` and the
 container's been restarted to pick them up - otherwise this step opens
 the app to the internet with no password.
 
+No static IP is not a blocker for the recommended path below - that's
+what DDNS is for, not QuickConnect (see the note at the end).
+
+**Recommended: DDNS + reverse proxy**
+
 1. **DDNS** (if you don't already have one): Control Panel → External
-   Access → DDNS → add a hostname (e.g. `yourname.synology.me`).
+   Access → DDNS → add a hostname (e.g. `yourname.synology.me`). This
+   updates automatically as your home IP changes, so it doesn't need a
+   static IP either.
 2. **Certificate**: Control Panel → Security → Certificate → get a Let's
    Encrypt certificate for that hostname (Synology automates renewal).
 3. **Reverse proxy**: Control Panel → Login Portal → Advanced → Reverse
@@ -63,8 +70,22 @@ the app to the internet with no password.
 5. Visit `https://yourname.synology.me/` from outside your network - your
    browser should prompt for the username/password you set.
 
-If you'd rather not open anything to the public internet at all, a VPN
-into your home network (Synology's own VPN Server, or something like
+**Alternative: QuickConnect, if you'd rather not touch router port-forwarding**
+
+Control Panel → External Access → QuickConnect → enable it, then use
+Application Portal (DSM 7: under Login Portal → Advanced) to give this
+app's port (3000) a custom alias - it becomes reachable at
+`yourid.quickconnect.to/thealias`, still behind the same Basic Auth
+gate. This avoids opening router ports at all, but QuickConnect relays
+the connection through Synology's own servers when it can't establish a
+direct path, which is an extra hop for your data and has occasional
+reports of being unreliable for non-Synology-package traffic - the
+reverse proxy route above is more predictable if the router step isn't
+a problem.
+
+**If you'd rather not open anything to the public internet at all**, a
+VPN into your home network (Synology's own VPN Server, or something like
 Tailscale) reaches the app the same way as being on the LAN, with no
-reverse proxy or password gate needed - worth considering later if the
-Basic Auth password feels like more than you want to manage.
+reverse proxy, QuickConnect, or password gate needed - worth considering
+later if the Basic Auth password feels like more than you want to
+manage.
