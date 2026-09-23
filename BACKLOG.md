@@ -112,6 +112,31 @@ network too. See `DEPLOY.md`.
       Encrypt for external HTTPS access, why no inbound mail port is
       needed
 
+## Epic 7 — Check a journey by email ([#7](https://github.com/morph355/traindelaythameslink/issues/7))
+
+Email `out: HH:MM` / `back: HH:MM` to the same inbox and get an
+eligibility reply, without opening the app at all. See README "Checking
+a journey by email".
+
+- [x] `src/tickets/journeyRequest.ts`: parse the free-text body (out/back/
+      synonyms, optional date), pure and unit tested
+- [x] `src/tickets/replyComposer.ts`: render results into a copy-pasteable
+      plain-text reply with a link back to the app, pure and unit tested
+- [x] `src/tickets/processJourneyRequests.ts`: list unprocessed non-PDF
+      messages from the owner's address, parse, check via
+      `checkSplitJourney` (reusing `buildCommuteJourneySpec`, extracted
+      from `app.ts`'s `/api/check-commute` route to avoid duplicating the
+      outbound/return swap logic), reply, label `checked` so it isn't
+      reprocessed; unrecognised bodies get the format explained instead
+      of silence, and "no matching service" gets its own explanation
+- [x] Background poll loop in `index.ts` (`AGENTMAIL_POLL_SECONDS`,
+      default 60s), gated on `AGENTMAIL_API_KEY`/`AGENTMAIL_INBOX_ID`/
+      `AGENTMAIL_OWNER_EMAIL` all being set; errors are caught and logged
+      per tick rather than crashing the server (verified: a dummy API
+      key produces a clean caught error, server keeps running)
+- [ ] Try it against a real email once RTT/AgentMail credentials are set
+      up on the NAS
+
 ## Explicitly not planned
 
 - Auto-submitting claims (no public API; out of scope, see `PLAN.md`)

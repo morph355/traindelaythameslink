@@ -2,7 +2,7 @@ import express, { type Express } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { basicAuth } from "./basicAuth.js";
-import { COMMUTE } from "../config/commute.js";
+import { COMMUTE, buildCommuteJourneySpec } from "../config/commute.js";
 import type { RttClient } from "../rtt/client.js";
 import { NoMatchingServiceError, checkLeg } from "../rtt/checkLeg.js";
 import { checkSplitJourney } from "../rtt/checkSplitJourney.js";
@@ -40,17 +40,7 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
       throw err;
     }
 
-    const outbound = request.direction === "outbound";
-    const spec = {
-      fromCrs: outbound ? COMMUTE.fromCrs : COMMUTE.toCrs,
-      viaCrs: COMMUTE.viaCrs,
-      toCrs: outbound ? COMMUTE.toCrs : COMMUTE.fromCrs,
-      date: request.date,
-      bookedDepartureTime: request.bookedDepartureTime,
-      ticketLabels: outbound
-        ? { leg1: COMMUTE.ticketLabels.outboundLeg1, leg2: COMMUTE.ticketLabels.outboundLeg2 }
-        : { leg1: COMMUTE.ticketLabels.returnLeg1, leg2: COMMUTE.ticketLabels.returnLeg2 },
-    };
+    const spec = buildCommuteJourneySpec(request.direction, request.date, request.bookedDepartureTime);
 
     try {
       const results = await checkSplitJourney(client, spec);

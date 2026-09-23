@@ -1,8 +1,12 @@
+import type { SplitJourneySpec } from "../rtt/checkSplitJourney.js";
+
 export interface CommutePreset {
   label: string;
   /** HHmm */
   time: string;
 }
+
+export type CommuteDirection = "outbound" | "return";
 
 /**
  * Your regular split-save commute. Edit this if your route, split point, or
@@ -27,3 +31,22 @@ export const COMMUTE = {
     returnLeg2: "Gatwick Airport to Brighton",
   },
 };
+
+/** Builds a `checkSplitJourney` spec for your regular commute in either direction. */
+export function buildCommuteJourneySpec(
+  direction: CommuteDirection,
+  date: Date,
+  bookedDepartureTime: string,
+): SplitJourneySpec {
+  const outbound = direction === "outbound";
+  return {
+    fromCrs: outbound ? COMMUTE.fromCrs : COMMUTE.toCrs,
+    viaCrs: COMMUTE.viaCrs,
+    toCrs: outbound ? COMMUTE.toCrs : COMMUTE.fromCrs,
+    date,
+    bookedDepartureTime,
+    ticketLabels: outbound
+      ? { leg1: COMMUTE.ticketLabels.outboundLeg1, leg2: COMMUTE.ticketLabels.outboundLeg2 }
+      : { leg1: COMMUTE.ticketLabels.returnLeg1, leg2: COMMUTE.ticketLabels.returnLeg2 },
+  };
+}

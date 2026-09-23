@@ -51,14 +51,38 @@ see [`DEPLOY.md`](DEPLOY.md) - it covers Docker (`Dockerfile` +
 your home network, Synology's reverse proxy + the `APP_USERNAME`/
 `APP_PASSWORD` password gate that guards every route when set.
 
+## Checking a journey by email
+
+Send an email to `thameslink-tickets@agentmail.to`, from the address you
+set as `AGENTMAIL_OWNER_EMAIL`, with a line for each leg you travelled:
+
+```
+out: 06:39
+back: 18:12
+```
+
+Either line is optional (just the delay you hit), `return`/`inbound` also
+work for "back", `outbound` for "out", times can be `06:39`, `06.39` or
+`0639`, and an optional `date: yyyy-mm-dd` (or `date: yesterday`) line
+overrides the default of the day you sent the email. The app checks the
+inbox every `AGENTMAIL_POLL_SECONDS` (default 60s) and replies with the
+delay, eligibility, compensation tier and alternatives evidence for each
+leg, ready to copy straight into the claim form - no need to open the app
+at all, though the reply links back to it (`APP_URL`) in case you want to
+check something else.
+
+If the body doesn't match the format, the reply explains it instead of
+going silent.
+
 ## Ticket forwarding (in progress)
 
-Forward TrainPal booking confirmations to `thameslink-tickets@agentmail.to`
-and the app will (eventually) read the journey off the attached PDF
-instead of you typing it in. The inbox exists and the pieces that fetch
-and read the PDF are built and tested; the part that turns TrainPal's
-specific layout into journey fields is still pending a real sample to
-build against - see `BACKLOG.md` Epic 5.
+Forward TrainPal booking confirmations to the same inbox
+(`thameslink-tickets@agentmail.to`) and the app will (eventually) read
+the journey off the attached PDF automatically instead of you emailing
+the times yourself. The inbox exists and the pieces that fetch and read
+the PDF are built and tested; the part that turns TrainPal's specific
+layout into journey fields is still pending a real sample to build
+against - see `BACKLOG.md` Epic 5.
 
 ## Testing
 
@@ -75,6 +99,6 @@ npm test
 - `src/engine/` — pure delay/eligibility/alternatives-evidence logic
 - `src/server/` — Express app (static page + `POST /api/check` and
   `POST /api/check-commute` JSON APIs)
-- `src/tickets/` — AgentMail client + PDF text extraction for the
-  TrainPal-forwarding workflow (see above)
+- `src/tickets/` — AgentMail client, PDF text extraction, and the
+  email-request parsing/reply pipeline (see above)
 - `public/` — the web page

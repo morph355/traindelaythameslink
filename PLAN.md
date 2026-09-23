@@ -88,9 +88,12 @@ they're not - see `DEPLOY.md`.
 TrainPal booking confirmations (PDF e-tickets) get forwarded to a
 dedicated AgentMail inbox (`thameslink-tickets@agentmail.to`) rather than
 the user's own mailbox, keeping this app's mail access scoped to just
-that. The self-hosted server polls it on demand (a "check for new
-tickets" action, not a background cron) via the official `agentmail`
-npm SDK:
+that. The plan was for the server to poll it on demand (a "check for new
+tickets" action) rather than a background cron - since built, Epic 7
+added a background poll for a related but different purpose (see below),
+so this may end up piggybacking on that loop once `trainpal.ts` exists,
+rather than staying a separate on-demand action. Uses the official
+`agentmail` npm SDK:
 
 ```
 src/tickets/
@@ -113,6 +116,32 @@ guess at reliably from extracted text (no fixed column/label positions
 are known yet). Once one arrives, inspect it directly (this session has
 live AgentMail access) to build and unit-test the parser against real
 text, not assumptions.
+
+## Checking a journey by email
+
+The same inbox also accepts ad hoc "check my journey" requests, not just
+TrainPal forwards - an email from the user's own address (`out: HH:MM` /
+`back: HH:MM`, see README) gets an automatic reply with the eligibility
+report as plain text, ready to paste into the claim form without opening
+the app. This is the first genuinely automatic/background piece in the
+app (a poll loop in `index.ts`, `AGENTMAIL_POLL_SECONDS`), but it's still
+user-triggered, not a commute monitor: nothing happens unless the user
+sends an email.
+
+```
+src/tickets/
+  journeyRequest.ts       parse "out:"/"back:" (+ synonyms, optional date)
+                          from a plain-text email body
+  replyComposer.ts         render check results into a copy-pasteable
+                          plain-text reply
+  processJourneyRequests.ts   orchestrates: list unprocessed non-PDF
+                          messages from the owner -> parse -> check via
+                          checkSplitJourney -> reply -> label `checked`
+```
+
+Restricted to `AGENTMAIL_OWNER_EMAIL` on purpose - the inbox address
+could leak or attract spam, and this avoids running the checker (and
+sending a reply) for anything that isn't genuinely the user.
 
 ## Explicitly out of scope for v1
 
