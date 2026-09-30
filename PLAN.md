@@ -24,16 +24,40 @@ That's the evidence to include with a claim either way.
 
 ## Data source
 
-[Realtime Trains API](https://api-portal.rtt.io/) (rtt.io) - free for
-personal use, gives both scheduled (`gbttBooked*`) and realtime/actual
-(`realtime*`) times per service at each calling point. Requires a free
-account; credentials go in `.env` (see `.env.example`).
+[Realtime Trains API](https://api-portal.rtt.io/) (`data.rtt.io`, the
+"next-gen" API) - free for personal use, gives both scheduled
+(`scheduleAdvertised`) and realtime/actual (`realtimeActual`) times per
+service at each calling point. Requires a free account; the Bearer token
+from the API dashboard goes in `.env` as `RTT_TOKEN`.
+
+**This is the second RTT integration this app has had.** It was originally
+built against the classic `api.rtt.io` (HTTP Basic Auth, flat
+`gbttBookedArrival`/`realtimeArrival` fields). That API was retired by RTT
+essentially the same week this app went into real use - discovered when
+trying to answer a real question about a past journey and finding the
+whole client threw 403s. Migrated to `data.rtt.io` (Bearer token,
+`/gb-nr/location` + `/gb-nr/service`, nested `temporalData`/
+`scheduleMetadata`, locations matched via `shortCodes` arrays instead of a
+flat `crs` field) by reading the OpenAPI spec directly from
+[realtimetrains/api-specification](https://github.com/realtimetrains/api-specification)
+rather than guessing at the new shape. `src/rtt/types.ts`, `client.ts` and
+`adapter.ts` carry the RTT-specific knowledge; `engine/`, `checkLeg.ts` and
+`checkSplitJourney.ts` were untouched by the migration, confirming that
+isolating the RTT-specific layer was the right call the first time.
+
+One real bug the migration surfaced and fixed: RTT's response timestamps
+are absolute (UTC, with an explicit `Z`/offset), so converting them to a
+local HH:mm for display/comparison must go through an explicit
+`Europe/London` conversion (`toLondonHHmm` in `adapter.ts`) rather than
+relying on `Date`'s local-timezone getters, which depend on the server's
+own OS timezone (this dev sandbox's is UTC) and would silently be off by
+an hour during BST otherwise.
 
 Considered the Darwin Historic Service Performance (HSP) webservice
 instead/as well - it's the more "official" National Rail source, but
 requires a Rail Data Marketplace subscription with more onboarding
 friction. RTT covers what's needed for now; HSP is worth revisiting if RTT
-data proves unreliable for a real claim.
+data proves unreliable for a real claim, or migrates again.
 
 ## Architecture
 

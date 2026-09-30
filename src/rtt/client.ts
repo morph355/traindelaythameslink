@@ -1,10 +1,10 @@
-import type { RttSearchResponse, RttServiceResponse } from "./types.js";
+import type { RttLocationSearchResponse, RttServiceDetailResponse } from "./types.js";
 
-const BASE_URL = "https://api.rtt.io/api/v1";
+const BASE_URL = "https://data.rtt.io";
 
 export interface RttCredentials {
-  username: string;
-  password: string;
+  /** Bearer token from https://api-portal.rtt.io/ (the "next-gen" API - api.rtt.io/Basic Auth is retired). */
+  token: string;
 }
 
 export class RttApiError extends Error {
@@ -24,16 +24,14 @@ export class RttClient {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  private authHeader(): string {
-    const token = Buffer.from(
-      `${this.credentials.username}:${this.credentials.password}`,
-    ).toString("base64");
-    return `Basic ${token}`;
-  }
+  private async get<T>(path: string, params: Record<string, string | undefined>): Promise<T> {
+    const url = new URL(`${this.baseUrl}${path}`);
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined) url.searchParams.set(key, value);
+    }
 
-  private async get<T>(path: string): Promise<T> {
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      headers: { Authorization: this.authHeader() },
+    const response = await this.fetchImpl(url.toString(), {
+      headers: { Authorization: `Bearer ${this.credentials.token}` },
     });
     if (!response.ok) {
       throw new RttApiError(
@@ -45,31 +43,47 @@ export class RttClient {
   }
 
   /**
-   * Services running from `fromCrs` to `toCrs` on `date`, optionally from `time` (HHmm) onwards.
+   * Passenger services departing `fromCrs` and subsequently calling at `toCrs`,
+   * from `time` (HHmm, local UK clock time) for a 3-hour window.
    */
   async searchStationToStation(
     fromCrs: string,
     toCrs: string,
     date: Date,
-    time?: string,
-  ): Promise<RttSearchResponse> {
-    const { yyyy, mm, dd } = datePathParts(date);
-    const timeSegment = time ? `/${time}` : "";
-    return this.get<RttSearchResponse>(
-      `/json/search/${fromCrs}/to/${toCrs}/${yyyy}/${mm}/${dd}${timeSegment}`,
-    );
+    time: string,
+  ): Promise<RttLocationSearchResponse> {
+    return this.get<RttLocationSearchResponse>("/gb-nr/location", {
+      code: fromCrs,
+      filterTo: toCrs,
+      timeFrom: isoLocalDateTime(date, time),
+      timeWindow: "180",
+    });
   }
 
-  async getService(serviceUid: string, date: Date): Promise<RttServiceResponse> {
-    const { yyyy, mm, dd } = datePathParts(date);
-    return this.get<RttServiceResponse>(`/json/service/${serviceUid}/${yyyy}/${mm}/${dd}`);
+  /** Full calling-point detail for one service, identified by its `identity` (not the full uniqueIdentity). */
+  async getService(identity: string, date: Date): Promise<RttServiceDetailResponse> {
+    return this.get<RttServiceDetailResponse>("/gb-nr/service", {
+      identity,
+      departureDate: isoDate(date),
+    });
   }
 }
 
-function datePathParts(date: Date): { yyyy: string; mm: string; dd: string } {
-  return {
-    yyyy: String(date.getFullYear()),
-    mm: String(date.getMonth() + 1).padStart(2, "0"),
-    dd: String(date.getDate()).padStart(2, "0"),
-  };
+function isoDate(date: Date): string {
+  const yyyy = String(date.getFullYear());
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * An ISO 8601 datetime with no timezone offset, for `date` at local clock
+ * time `time` (HHmm) - the API treats an offset-less datetime as local time
+ * at the queried location, which for GB stations is what we want without
+ * having to reason about BST/GMT ourselves.
+ */
+function isoLocalDateTime(date: Date, time: string): string {
+  const hh = time.slice(0, 2);
+  const mm = time.slice(2, 4);
+  return `${isoDate(date)}T${hh}:${mm}:00`;
 }

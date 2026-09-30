@@ -1,49 +1,59 @@
-// Subset of the Realtime Trains API (https://api-portal.rtt.io/) JSON schema
-// that this app actually uses. Times are HHmm 24h strings, minutes only.
+// Subset of the Realtime Trains "next-gen" API
+// (https://github.com/realtimetrains/api-specification, data.rtt.io)
+// that this app actually uses. All times are ISO 8601 datetimes.
 
-export interface RttSearchLocationDetail {
-  gbttBookedDeparture?: string;
-  gbttBookedArrival?: string;
-  realtimeDeparture?: string;
-  realtimeArrival?: string;
-  origin: Array<{ description: string; publicTime?: string }>;
-  destination: Array<{ description: string; publicTime?: string }>;
+export interface RttGeographicLocation {
+  namespace?: string;
+  description?: string;
+  /** Short (CRS-like, e.g. "BTN") codes for this location. */
+  shortCodes?: string[];
+  /** Long (TIPLOC-like) codes for this location. */
+  longCodes?: string[];
 }
 
-export interface RttSearchService {
-  serviceUid: string;
-  runDate: string; // yyyy-MM-dd
-  atocCode: string;
-  atocName: string;
-  trainIdentity?: string;
-  serviceType: string;
-  isPassenger: boolean;
-  locationDetail: RttSearchLocationDetail;
+export interface RttIndividualTemporalData {
+  scheduleAdvertised?: string;
+  realtimeForecast?: string;
+  realtimeEstimate?: string;
+  realtimeNoReport?: boolean;
+  realtimeActual?: string;
+  realtimeAdvertisedLateness?: number;
+  isCancelled?: boolean;
 }
 
-export interface RttSearchResponse {
-  location: { name: string; crs: string };
-  services: RttSearchService[] | null;
+export interface RttLocationTemporalData {
+  arrival?: RttIndividualTemporalData;
+  departure?: RttIndividualTemporalData;
+  pass?: RttIndividualTemporalData;
 }
 
-export interface RttServiceLocation {
-  crs: string;
-  description: string;
-  gbttBookedArrival?: string;
-  gbttBookedDeparture?: string;
-  realtimeArrival?: string;
-  realtimeDeparture?: string;
-  realtimeArrivalActual?: boolean;
-  realtimeDepartureActual?: boolean;
-  cancelled?: boolean;
-  displayAs?: string;
+export interface RttScheduleMetadata {
+  uniqueIdentity: string;
+  namespace: string;
+  identity: string;
+  /** yyyy-mm-dd */
+  departureDate: string;
+  inPassengerService?: boolean;
+  modeType?: string;
 }
 
-export interface RttServiceResponse {
-  serviceUid: string;
-  runDate: string;
-  atocCode: string;
-  atocName: string;
-  cancelReason?: string;
-  locations: RttServiceLocation[];
+export interface RttLocationLineUpItem {
+  scheduleMetadata: RttScheduleMetadata;
+  temporalData?: RttLocationTemporalData;
+}
+
+export interface RttLocationSearchResponse {
+  services?: RttLocationLineUpItem[];
+}
+
+export interface RttServiceLocationEntry {
+  temporalData?: RttLocationTemporalData;
+  location?: RttGeographicLocation;
+}
+
+export interface RttServiceDetailResponse {
+  service?: {
+    scheduleMetadata: RttScheduleMetadata;
+    locations: RttServiceLocationEntry[];
+  };
 }

@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentMailClient } from "agentmail";
-import { NoMatchingServiceError } from "../../src/rtt/checkLeg.js";
 import type { RttClient } from "../../src/rtt/client.js";
-import type { RttSearchResponse, RttServiceResponse } from "../../src/rtt/types.js";
+import type { RttServiceDetailResponse } from "../../src/rtt/types.js";
 import { PROCESSED_LABEL, processJourneyRequests } from "../../src/tickets/processJourneyRequests.js";
 
 const OWNER = "me@example.com";
@@ -20,34 +19,53 @@ function fakeAgentMail(messages: unknown[], bodies: Record<string, string>) {
   return { client, reply, update, list, get };
 }
 
-const throughService: RttServiceResponse = {
-  serviceUid: "TAKEN",
-  runDate: "2026-09-23",
-  atocCode: "TL",
-  atocName: "Thameslink",
-  locations: [
-    { crs: "BTN", description: "Brighton", gbttBookedDeparture: "0639", gbttBookedArrival: "0639", realtimeArrival: "0639", realtimeArrivalActual: true },
-    { crs: "GTW", description: "Gatwick Airport", gbttBookedArrival: "0705", gbttBookedDeparture: "0707", realtimeArrival: "0719", realtimeArrivalActual: true },
-    { crs: "LBG", description: "London Bridge", gbttBookedArrival: "0755", realtimeArrival: "0825", realtimeArrivalActual: true },
-  ],
+const throughService: RttServiceDetailResponse = {
+  service: {
+    scheduleMetadata: {
+      uniqueIdentity: "gb-nr:TAKEN:2026-09-23",
+      namespace: "gb-nr",
+      identity: "TAKEN",
+      departureDate: "2026-09-23",
+    },
+    locations: [
+      {
+        location: { shortCodes: ["BTN"] },
+        temporalData: {
+          departure: { scheduleAdvertised: "2026-09-23T05:39:00Z" },
+          arrival: { scheduleAdvertised: "2026-09-23T05:39:00Z", realtimeActual: "2026-09-23T05:39:00Z", realtimeNoReport: false },
+        },
+      },
+      {
+        location: { shortCodes: ["GTW"] },
+        temporalData: {
+          arrival: { scheduleAdvertised: "2026-09-23T06:05:00Z", realtimeActual: "2026-09-23T06:19:00Z", realtimeNoReport: false },
+          departure: { scheduleAdvertised: "2026-09-23T06:07:00Z" },
+        },
+      },
+      {
+        location: { shortCodes: ["LBG"] },
+        temporalData: {
+          arrival: { scheduleAdvertised: "2026-09-23T06:55:00Z", realtimeActual: "2026-09-23T07:25:00Z", realtimeNoReport: false },
+        },
+      },
+    ],
+  },
 };
 
 function fakeRtt(): RttClient {
   return {
     searchStationToStation: vi.fn(async (fromCrs: string) => ({
-      location: { name: fromCrs, crs: fromCrs },
       services: [
         {
-          serviceUid: "TAKEN",
-          runDate: "2026-09-23",
-          atocCode: "TL",
-          atocName: "Thameslink",
-          serviceType: "train",
-          isPassenger: true,
-          locationDetail: {
-            gbttBookedDeparture: fromCrs === "GTW" ? "0707" : "0639",
-            origin: [],
-            destination: [],
+          scheduleMetadata: {
+            uniqueIdentity: "gb-nr:TAKEN:2026-09-23",
+            namespace: "gb-nr",
+            identity: "TAKEN",
+            departureDate: "2026-09-23",
+            inPassengerService: true,
+          },
+          temporalData: {
+            departure: { scheduleAdvertised: fromCrs === "GTW" ? "2026-09-23T06:07:00Z" : "2026-09-23T05:39:00Z" },
           },
         },
       ],
@@ -58,7 +76,7 @@ function fakeRtt(): RttClient {
 
 function fakeRttNoService(): RttClient {
   return {
-    searchStationToStation: vi.fn().mockResolvedValue({ location: { name: "BTN", crs: "BTN" }, services: [] }),
+    searchStationToStation: vi.fn().mockResolvedValue({ services: [] }),
     getService: vi.fn(),
   } as unknown as RttClient;
 }

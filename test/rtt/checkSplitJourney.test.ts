@@ -2,107 +2,114 @@ import { describe, expect, it, vi } from "vitest";
 import { checkSplitJourney } from "../../src/rtt/checkSplitJourney.js";
 import { NoMatchingServiceError } from "../../src/rtt/checkLeg.js";
 import type { RttClient } from "../../src/rtt/client.js";
-import type { RttSearchResponse, RttSearchService, RttServiceResponse } from "../../src/rtt/types.js";
+import type {
+  RttLocationLineUpItem,
+  RttLocationSearchResponse,
+  RttServiceDetailResponse,
+} from "../../src/rtt/types.js";
 
-function searchService(uid: string, departure: string): RttSearchService {
+function searchItem(identity: string, departureIso: string): RttLocationLineUpItem {
   return {
-    serviceUid: uid,
-    runDate: "2026-09-23",
-    atocCode: "TL",
-    atocName: "Thameslink",
-    serviceType: "train",
-    isPassenger: true,
-    locationDetail: { gbttBookedDeparture: departure, origin: [], destination: [] },
+    scheduleMetadata: {
+      uniqueIdentity: `gb-nr:${identity}:2026-09-23`,
+      namespace: "gb-nr",
+      identity,
+      departureDate: "2026-09-23",
+      inPassengerService: true,
+    },
+    temporalData: { departure: { scheduleAdvertised: departureIso } },
   };
 }
 
-const takenDetail: RttServiceResponse = {
-  serviceUid: "TAKEN",
-  runDate: "2026-09-23",
-  atocCode: "TL",
-  atocName: "Thameslink",
-  locations: [
-    { crs: "BTN", description: "Brighton", gbttBookedDeparture: "0639" },
-    {
-      crs: "GTW",
-      description: "Gatwick Airport",
-      gbttBookedArrival: "0705",
-      gbttBookedDeparture: "0707",
-      realtimeArrival: "0719",
-      realtimeArrivalActual: true,
+const takenDetail: RttServiceDetailResponse = {
+  service: {
+    scheduleMetadata: {
+      uniqueIdentity: "gb-nr:TAKEN:2026-09-23",
+      namespace: "gb-nr",
+      identity: "TAKEN",
+      departureDate: "2026-09-23",
     },
-    {
-      crs: "LBG",
-      description: "London Bridge",
-      gbttBookedArrival: "0755",
-      realtimeArrival: "0825",
-      realtimeArrivalActual: true,
-    },
-  ],
+    locations: [
+      { location: { shortCodes: ["BTN"] }, temporalData: { departure: { scheduleAdvertised: "2026-09-23T05:39:00Z" } } },
+      {
+        location: { shortCodes: ["GTW"] },
+        temporalData: {
+          arrival: { scheduleAdvertised: "2026-09-23T06:05:00Z", realtimeActual: "2026-09-23T06:19:00Z", realtimeNoReport: false },
+          departure: { scheduleAdvertised: "2026-09-23T06:07:00Z" },
+        },
+      },
+      {
+        location: { shortCodes: ["LBG"] },
+        temporalData: {
+          arrival: { scheduleAdvertised: "2026-09-23T06:55:00Z", realtimeActual: "2026-09-23T07:25:00Z", realtimeNoReport: false },
+        },
+      },
+    ],
+  },
 };
 
-const altLeg1Detail: RttServiceResponse = {
-  serviceUid: "ALT_LEG1",
-  runDate: "2026-09-23",
-  atocCode: "TL",
-  atocName: "Thameslink",
-  locations: [
-    { crs: "BTN", description: "Brighton", gbttBookedDeparture: "0645" },
-    {
-      crs: "GTW",
-      description: "Gatwick Airport",
-      gbttBookedArrival: "0730",
-      realtimeArrival: "0733",
-      realtimeArrivalActual: true,
+const altLeg1Detail: RttServiceDetailResponse = {
+  service: {
+    scheduleMetadata: {
+      uniqueIdentity: "gb-nr:ALT_LEG1:2026-09-23",
+      namespace: "gb-nr",
+      identity: "ALT_LEG1",
+      departureDate: "2026-09-23",
     },
-  ],
+    locations: [
+      { location: { shortCodes: ["BTN"] }, temporalData: { departure: { scheduleAdvertised: "2026-09-23T05:45:00Z" } } },
+      {
+        location: { shortCodes: ["GTW"] },
+        temporalData: {
+          arrival: { scheduleAdvertised: "2026-09-23T06:30:00Z", realtimeActual: "2026-09-23T06:33:00Z", realtimeNoReport: false },
+        },
+      },
+    ],
+  },
 };
 
-const altLeg2Detail: RttServiceResponse = {
-  serviceUid: "ALT_LEG2",
-  runDate: "2026-09-23",
-  atocCode: "TL",
-  atocName: "Thameslink",
-  locations: [
-    { crs: "GTW", description: "Gatwick Airport", gbttBookedDeparture: "0715" },
-    {
-      crs: "LBG",
-      description: "London Bridge",
-      gbttBookedArrival: "0800",
-      realtimeArrival: "0803",
-      realtimeArrivalActual: true,
+const altLeg2Detail: RttServiceDetailResponse = {
+  service: {
+    scheduleMetadata: {
+      uniqueIdentity: "gb-nr:ALT_LEG2:2026-09-23",
+      namespace: "gb-nr",
+      identity: "ALT_LEG2",
+      departureDate: "2026-09-23",
     },
-  ],
+    locations: [
+      { location: { shortCodes: ["GTW"] }, temporalData: { departure: { scheduleAdvertised: "2026-09-23T06:15:00Z" } } },
+      {
+        location: { shortCodes: ["LBG"] },
+        temporalData: {
+          arrival: { scheduleAdvertised: "2026-09-23T07:00:00Z", realtimeActual: "2026-09-23T07:03:00Z", realtimeNoReport: false },
+        },
+      },
+    ],
+  },
 };
 
 function fakeClient(): RttClient {
   const searchStationToStation = vi.fn(
-    async (fromCrs: string, toCrs: string, _date: Date, time?: string): Promise<RttSearchResponse> => {
+    async (fromCrs: string, toCrs: string, _date: Date, time?: string): Promise<RttLocationSearchResponse> => {
       if (fromCrs === "BTN" && toCrs === "LBG") {
-        return { location: { name: "Brighton", crs: "BTN" }, services: [searchService("TAKEN", "0639")] };
+        return { services: [searchItem("TAKEN", "2026-09-23T05:39:00Z")] };
       }
       if (fromCrs === "BTN" && toCrs === "GTW") {
-        return {
-          location: { name: "Brighton", crs: "BTN" },
-          services: [searchService("TAKEN", "0639"), searchService("ALT_LEG1", "0645")],
-        };
+        return { services: [searchItem("TAKEN", "2026-09-23T05:39:00Z"), searchItem("ALT_LEG1", "2026-09-23T05:45:00Z")] };
       }
       if (fromCrs === "GTW" && toCrs === "LBG") {
-        return {
-          location: { name: "Gatwick Airport", crs: "GTW" },
-          services: [searchService("TAKEN", "0707"), searchService("ALT_LEG2", "0715")],
-        };
+        return { services: [searchItem("TAKEN", "2026-09-23T06:07:00Z"), searchItem("ALT_LEG2", "2026-09-23T06:15:00Z")] };
       }
       throw new Error(`Unexpected search ${fromCrs}->${toCrs} at ${time}`);
     },
   );
 
-  const services: Record<string, RttServiceResponse> = {
+  const services: Record<string, RttServiceDetailResponse> = {
     TAKEN: takenDetail,
     ALT_LEG1: altLeg1Detail,
     ALT_LEG2: altLeg2Detail,
   };
-  const getService = vi.fn(async (uid: string) => services[uid]);
+  const getService = vi.fn(async (identity: string) => services[identity]);
 
   return { searchStationToStation, getService } as unknown as RttClient;
 }
@@ -137,7 +144,7 @@ describe("checkSplitJourney", () => {
 
   it("throws NoMatchingServiceError when no through service is found", async () => {
     const client = {
-      searchStationToStation: vi.fn().mockResolvedValue({ location: { name: "Brighton", crs: "BTN" }, services: [] }),
+      searchStationToStation: vi.fn().mockResolvedValue({ services: [] }),
       getService: vi.fn(),
     } as unknown as RttClient;
 
@@ -154,16 +161,17 @@ describe("checkSplitJourney", () => {
 
   it("throws when the matched service doesn't call at the via station", async () => {
     const client = {
-      searchStationToStation: vi.fn().mockResolvedValue({
-        location: { name: "Brighton", crs: "BTN" },
-        services: [searchService("TAKEN", "0639")],
-      }),
+      searchStationToStation: vi.fn().mockResolvedValue({ services: [searchItem("TAKEN", "2026-09-23T05:39:00Z")] }),
       getService: vi.fn().mockResolvedValue({
-        serviceUid: "TAKEN",
-        runDate: "2026-09-23",
-        atocCode: "TL",
-        atocName: "Thameslink",
-        locations: [{ crs: "BTN", description: "Brighton", gbttBookedDeparture: "0639" }],
+        service: {
+          scheduleMetadata: {
+            uniqueIdentity: "gb-nr:TAKEN:2026-09-23",
+            namespace: "gb-nr",
+            identity: "TAKEN",
+            departureDate: "2026-09-23",
+          },
+          locations: [{ location: { shortCodes: ["BTN"] }, temporalData: { departure: { scheduleAdvertised: "2026-09-23T05:39:00Z" } } }],
+        },
       }),
     } as unknown as RttClient;
 

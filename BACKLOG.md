@@ -19,6 +19,9 @@ This applies to every story below, including ones already checked off.
 
 ## Epic 1 — Core: RTT data + eligibility engine ([#1](https://github.com/morph355/traindelaythameslink/issues/1))
 
+*(The RTT client described here was rewritten in Epic 8 after RTT retired
+this API - "HTTP Basic Auth" below is what it originally was, not current.)*
+
 - [x] RTT API client: search station-to-station, fetch service detail,
       HTTP Basic Auth, typed responses
 - [x] Adapter: map RTT's JSON shape to this app's domain types
@@ -136,6 +139,39 @@ a journey by email".
       key produces a clean caught error, server keeps running)
 - [ ] Try it against a real email once RTT/AgentMail credentials are set
       up on the NAS
+
+## Epic 8 — Migrate to the next-gen RTT API ([#8](https://github.com/morph355/traindelaythameslink/issues/8))
+
+`api.rtt.io` (HTTP Basic Auth, the API every earlier epic was built
+against) was retired by RTT essentially the same week - discovered while
+trying to answer a real question about a past journey and hitting 403s
+everywhere. See `PLAN.md` "Data source" for the full story.
+
+- [x] Read the real OpenAPI spec from
+      [realtimetrains/api-specification](https://github.com/realtimetrains/api-specification)
+      rather than guess at the new shape (blocked from fetching
+      `api-portal.rtt.io`/`data.rtt.io` directly from this dev sandbox, so
+      went via `raw.githubusercontent.com` instead)
+- [x] `src/rtt/types.ts`, `client.ts`, `adapter.ts` rewritten for
+      `data.rtt.io`: Bearer token auth, `/gb-nr/location` +
+      `/gb-nr/service`, nested `temporalData`/`scheduleMetadata`, location
+      matching via `shortCodes` arrays instead of a flat `crs` field
+- [x] `engine/`, `checkLeg.ts`, `checkSplitJourney.ts` untouched by the
+      migration (only the two `getService` call sites changed from
+      `.serviceUid` to `.scheduleMetadata.identity`) - confirms isolating
+      the RTT-specific layer in Epic 1 was the right call
+- [x] Fixed a real timezone bug the migration surfaced: RTT's response
+      timestamps are absolute UTC and must go through an explicit
+      `Europe/London` conversion (`toLondonHHmm`), not `Date`'s
+      local-timezone getters, which depend on the server's own OS
+      timezone and would silently be an hour off during BST otherwise
+- [x] All affected tests rewritten against realistic fixtures (UTC `Z`
+      timestamps, not bare local time - which is what caught the timezone
+      bug above); 82 tests passing, clean typecheck
+- [ ] Confirmed against the live API - blocked from reaching `data.rtt.io`
+      from this dev sandbox too (`Host not in allowlist`, same as several
+      other external domains this session); needs a real run with a real
+      token from a normal network to confirm end-to-end
 
 ## Explicitly not planned
 

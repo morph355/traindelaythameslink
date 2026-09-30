@@ -1,6 +1,11 @@
 import { evaluateLeg } from "../engine/delayRepay.js";
 import type { Leg, LegResult } from "../engine/types.js";
-import { findAlternativeCandidates, findClosestService, toServicePerformance } from "./adapter.js";
+import {
+  findAlternativeCandidates,
+  findClosestService,
+  toLondonHHmm,
+  toServicePerformance,
+} from "./adapter.js";
 import { MAX_ALTERNATIVES_CHECKED, NoMatchingServiceError } from "./checkLeg.js";
 import type { RttClient } from "./client.js";
 
@@ -37,14 +42,16 @@ export async function checkSplitJourney(
   const matched = findClosestService(search, spec.bookedDepartureTime);
   if (!matched) throw new NoMatchingServiceError(wholeJourneyLeg);
 
-  const takenDetail = await client.getService(matched.serviceUid, spec.date);
-  const viaLocation = takenDetail.locations.find((loc) => loc.crs === spec.viaCrs);
-  if (!viaLocation?.gbttBookedDeparture) {
+  const takenDetail = await client.getService(matched.scheduleMetadata.identity, spec.date);
+  const viaLocation = takenDetail.service?.locations.find((loc) =>
+    (loc.location?.shortCodes ?? []).includes(spec.viaCrs),
+  );
+  const leg2BookedDeparture = toLondonHHmm(viaLocation?.temporalData?.departure?.scheduleAdvertised);
+  if (!leg2BookedDeparture) {
     throw new Error(
-      `Service ${matched.serviceUid} on ${spec.date.toDateString()} doesn't appear to call at ${spec.viaCrs}`,
+      `Service ${matched.scheduleMetadata.uniqueIdentity} on ${spec.date.toDateString()} doesn't appear to call at ${spec.viaCrs}`,
     );
   }
-  const leg2BookedDeparture = viaLocation.gbttBookedDeparture;
 
   const leg1: Leg = {
     fromCrs: spec.fromCrs,
@@ -64,9 +71,10 @@ export async function checkSplitJourney(
   const leg1Taken = toServicePerformance(takenDetail, spec.viaCrs);
   const leg2Taken = toServicePerformance(takenDetail, spec.toCrs);
 
+  const excludeUid = matched.scheduleMetadata.uniqueIdentity;
   const [leg1Alternatives, leg2Alternatives] = await Promise.all([
-    findAlternatives(client, leg1, matched.serviceUid),
-    findAlternatives(client, leg2, matched.serviceUid),
+    findAlternatives(client, leg1, excludeUid),
+    findAlternatives(client, leg2, excludeUid),
   ]);
 
   return [
@@ -81,6 +89,6 @@ async function findAlternatives(client: RttClient, leg: Leg, excludeUid: string)
     0,
     MAX_ALTERNATIVES_CHECKED,
   );
-  const details = await Promise.all(candidates.map((c) => client.getService(c.serviceUid, leg.date)));
+  const details = await Promise.all(candidates.map((c) => client.getService(c.scheduleMetadata.identity, leg.date)));
   return details.map((d) => toServicePerformance(d, leg.toCrs));
 }

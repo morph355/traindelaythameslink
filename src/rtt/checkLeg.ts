@@ -25,15 +25,16 @@ export async function checkLeg(client: RttClient, leg: Leg): Promise<LegResult> 
   const matched = findClosestService(search, leg.bookedDepartureTime);
   if (!matched) throw new NoMatchingServiceError(leg);
 
-  const takenDetail = await client.getService(matched.serviceUid, leg.date);
+  const takenDetail = await client.getService(matched.scheduleMetadata.identity, leg.date);
   const taken = toServicePerformance(takenDetail, leg.toCrs);
 
-  const candidates = findAlternativeCandidates(search, leg.bookedDepartureTime, matched.serviceUid).slice(
+  const excludeUid = matched.scheduleMetadata.uniqueIdentity;
+  const candidates = findAlternativeCandidates(search, leg.bookedDepartureTime, excludeUid).slice(
     0,
     MAX_ALTERNATIVES_CHECKED,
   );
   const alternativeDetails = await Promise.all(
-    candidates.map((c) => client.getService(c.serviceUid, leg.date)),
+    candidates.map((c) => client.getService(c.scheduleMetadata.identity, leg.date)),
   );
   const alternatives = alternativeDetails.map((d) => toServicePerformance(d, leg.toCrs));
 

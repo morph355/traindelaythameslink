@@ -1,21 +1,49 @@
 import type { ServicePerformance } from "../engine/types.js";
 import { minutesOfDay } from "../engine/delayRepay.js";
-import type { RttSearchResponse, RttSearchService, RttServiceResponse } from "./types.js";
+import type {
+  RttLocationLineUpItem,
+  RttLocationSearchResponse,
+  RttServiceDetailResponse,
+} from "./types.js";
+
+/** Converts an RTT ISO datetime to local UK clock time as an HHmm string, independent of server timezone. */
+export function toLondonHHmm(iso: string | undefined): string | undefined {
+  if (!iso) return undefined;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${hour}${minute}`;
+}
 
 /** Maps a full RTT service detail response into this app's domain type, for one destination CRS. */
 export function toServicePerformance(
-  service: RttServiceResponse,
+  service: RttServiceDetailResponse,
   destinationCrs: string,
 ): ServicePerformance {
-  const destination = service.locations.find((loc) => loc.crs === destinationCrs);
+  const detail = service.service;
+  if (!detail) {
+    throw new Error("RTT service response had no `service` data");
+  }
+
+  const originDeparture = detail.locations[0]?.temporalData?.departure;
+  const destination = detail.locations.find((loc) =>
+    (loc.location?.shortCodes ?? []).includes(destinationCrs),
+  );
+  const arrival = destination?.temporalData?.arrival;
+
   return {
-    serviceUid: service.serviceUid,
-    runDate: service.runDate,
-    scheduledDeparture: service.locations[0]?.gbttBookedDeparture,
-    scheduledArrival: destination?.gbttBookedArrival,
-    actualArrival: destination?.realtimeArrival,
-    arrivalIsActual: destination?.realtimeArrivalActual ?? false,
-    cancelled: Boolean(destination?.cancelled ?? service.cancelReason),
+    serviceUid: detail.scheduleMetadata.uniqueIdentity,
+    runDate: detail.scheduleMetadata.departureDate,
+    scheduledDeparture: toLondonHHmm(originDeparture?.scheduleAdvertised),
+    scheduledArrival: toLondonHHmm(arrival?.scheduleAdvertised),
+    actualArrival: toLondonHHmm(arrival?.realtimeActual),
+    arrivalIsActual: Boolean(arrival?.realtimeActual) && !arrival?.realtimeNoReport,
+    cancelled: Boolean(arrival?.isCancelled),
   };
 }
 
@@ -25,21 +53,21 @@ export function toServicePerformance(
  * absolute minute difference.
  */
 export function findClosestService(
-  search: RttSearchResponse,
+  search: RttLocationSearchResponse,
   bookedDepartureTime: string,
-): RttSearchService | undefined {
+): RttLocationLineUpItem | undefined {
   const candidates = (search.services ?? []).filter(
-    (s) => s.isPassenger && s.locationDetail.gbttBookedDeparture,
+    (s) => s.scheduleMetadata.inPassengerService && s.temporalData?.departure?.scheduleAdvertised,
   );
   if (candidates.length === 0) return undefined;
 
   const targetMinutes = minutesOfDay(bookedDepartureTime);
   return candidates.reduce((closest, candidate) => {
     const candidateDiff = Math.abs(
-      minutesOfDay(candidate.locationDetail.gbttBookedDeparture!) - targetMinutes,
+      minutesOfDay(toLondonHHmm(candidate.temporalData!.departure!.scheduleAdvertised)!) - targetMinutes,
     );
     const closestDiff = Math.abs(
-      minutesOfDay(closest.locationDetail.gbttBookedDeparture!) - targetMinutes,
+      minutesOfDay(toLondonHHmm(closest.temporalData!.departure!.scheduleAdvertised)!) - targetMinutes,
     );
     return candidateDiff < closestDiff ? candidate : closest;
   });
@@ -50,16 +78,15 @@ export function findClosestService(
  * `fromTime` (HHmm), excluding `excludeUid` (the service actually taken).
  */
 export function findAlternativeCandidates(
-  search: RttSearchResponse,
+  search: RttLocationSearchResponse,
   fromTime: string,
   excludeUid: string,
-): RttSearchService[] {
+): RttLocationLineUpItem[] {
   const fromMinutes = minutesOfDay(fromTime);
-  return (search.services ?? []).filter(
-    (s) =>
-      s.isPassenger &&
-      s.serviceUid !== excludeUid &&
-      s.locationDetail.gbttBookedDeparture !== undefined &&
-      minutesOfDay(s.locationDetail.gbttBookedDeparture) >= fromMinutes,
-  );
+  return (search.services ?? []).filter((s) => {
+    const departureIso = s.temporalData?.departure?.scheduleAdvertised;
+    if (!s.scheduleMetadata.inPassengerService || !departureIso) return false;
+    if (s.scheduleMetadata.uniqueIdentity === excludeUid) return false;
+    return minutesOfDay(toLondonHHmm(departureIso)!) >= fromMinutes;
+  });
 }

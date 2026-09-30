@@ -18,10 +18,10 @@ you need to submit one yourself within 28 days.
 ## Setup
 
 1. Register for a free personal-use account at
-   [api-portal.rtt.io](https://api-portal.rtt.io/) and grab your API
-   username/password from your account page.
+   [api-portal.rtt.io](https://api-portal.rtt.io/) and copy the token
+   shown on your API dashboard.
 2. `npm install`
-3. `cp .env.example .env` and fill in `RTT_USERNAME` / `RTT_PASSWORD`.
+3. `cp .env.example .env` and fill in `RTT_TOKEN`.
 4. `npm run dev` (or `npm run build && npm start`).
 5. Open http://localhost:3000.
 

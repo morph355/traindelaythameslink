@@ -11,51 +11,40 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
 }
 
 describe("RttClient", () => {
-  it("builds the search URL with date and time segments and sends basic auth", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ location: {}, services: [] }));
-    const client = new RttClient(
-      { username: "user", password: "pass" },
-      "https://api.rtt.io/api/v1",
-      fetchMock,
-    );
+  it("builds the location search URL with Bearer auth and query params", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ services: [] }));
+    const client = new RttClient({ token: "tok123" }, "https://data.rtt.io", fetchMock);
 
-    await client.searchStationToStation("STP", "BTN", new Date(2026, 8, 23), "0812");
+    await client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639");
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.rtt.io/api/v1/json/search/STP/to/BTN/2026/09/23/0812",
-      { headers: { Authorization: `Basic ${Buffer.from("user:pass").toString("base64")}` } },
-    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(new URL(url).pathname).toBe("/gb-nr/location");
+    expect(new URL(url).searchParams.get("code")).toBe("BTN");
+    expect(new URL(url).searchParams.get("filterTo")).toBe("GTW");
+    expect(new URL(url).searchParams.get("timeFrom")).toBe("2026-09-23T06:39:00");
+    expect(new URL(url).searchParams.get("timeWindow")).toBe("180");
+    expect(init.headers.Authorization).toBe("Bearer tok123");
   });
 
-  it("omits the time segment when no time is given", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ location: {}, services: [] }));
-    const client = new RttClient({ username: "u", password: "p" }, "https://api.rtt.io/api/v1", fetchMock);
+  it("fetches service detail by identity and departure date", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ service: { locations: [] } }));
+    const client = new RttClient({ token: "tok123" }, "https://data.rtt.io", fetchMock);
 
-    await client.searchStationToStation("STP", "BTN", new Date(2026, 8, 23));
+    await client.getService("L01525", new Date(2026, 8, 23));
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.rtt.io/api/v1/json/search/STP/to/BTN/2026/09/23",
-      expect.anything(),
-    );
-  });
-
-  it("fetches service detail by uid and date", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ serviceUid: "G12345", locations: [] }));
-    const client = new RttClient({ username: "u", password: "p" }, "https://api.rtt.io/api/v1", fetchMock);
-
-    const result = await client.getService("G12345", new Date(2026, 8, 23));
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.rtt.io/api/v1/json/service/G12345/2026/09/23",
-      expect.anything(),
-    );
-    expect(result.serviceUid).toBe("G12345");
+    const [url] = fetchMock.mock.calls[0];
+    expect(new URL(url).pathname).toBe("/gb-nr/service");
+    expect(new URL(url).searchParams.get("identity")).toBe("L01525");
+    expect(new URL(url).searchParams.get("departureDate")).toBe("2026-09-23");
   });
 
   it("throws RttApiError on a non-ok response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, false, 401));
-    const client = new RttClient({ username: "u", password: "p" }, "https://api.rtt.io/api/v1", fetchMock);
+    const client = new RttClient({ token: "tok123" }, "https://data.rtt.io", fetchMock);
 
-    await expect(client.searchStationToStation("STP", "BTN", new Date(2026, 8, 23))).rejects.toThrow(RttApiError);
+    await expect(client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639")).rejects.toThrow(
+      RttApiError,
+    );
   });
 });

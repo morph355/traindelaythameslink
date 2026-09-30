@@ -3,13 +3,12 @@ import { processJourneyRequests } from "../tickets/processJourneyRequests.js";
 import { RttClient } from "../rtt/client.js";
 import { createApp } from "./app.js";
 
-const username = process.env.RTT_USERNAME;
-const password = process.env.RTT_PASSWORD;
+const rttToken = process.env.RTT_TOKEN;
 
-if (!username || !password) {
+if (!rttToken) {
   console.error(
-    "Missing RTT_USERNAME/RTT_PASSWORD. Copy .env.example to .env and fill in your " +
-      "Realtime Trains API credentials from https://api-portal.rtt.io/.",
+    "Missing RTT_TOKEN. Copy .env.example to .env and fill in your Realtime Trains API " +
+      "token from https://api-portal.rtt.io/.",
   );
   process.exit(1);
 }
@@ -26,7 +25,7 @@ if (!auth) {
   );
 }
 
-const client = new RttClient({ username, password });
+const client = new RttClient({ token: rttToken });
 const app = createApp(client, { auth });
 const port = Number(process.env.PORT ?? 3000);
 

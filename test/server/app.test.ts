@@ -2,46 +2,49 @@ import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "../../src/server/app.js";
 import type { RttClient } from "../../src/rtt/client.js";
-import type { RttSearchResponse, RttServiceResponse } from "../../src/rtt/types.js";
+import type { RttLocationSearchResponse, RttServiceDetailResponse } from "../../src/rtt/types.js";
 
 function fakeClient(
-  search: RttSearchResponse,
-  servicesByUid: Record<string, RttServiceResponse>,
+  search: RttLocationSearchResponse,
+  servicesByIdentity: Record<string, RttServiceDetailResponse>,
 ): RttClient {
   return {
     searchStationToStation: vi.fn().mockResolvedValue(search),
-    getService: vi.fn(async (uid: string) => servicesByUid[uid]),
+    getService: vi.fn(async (identity: string) => servicesByIdentity[identity]),
   } as unknown as RttClient;
 }
 
-const takenService: RttServiceResponse = {
-  serviceUid: "TAKEN",
-  runDate: "2026-09-23",
-  atocCode: "TL",
-  atocName: "Thameslink",
-  locations: [
-    { crs: "STP", description: "St Pancras", gbttBookedDeparture: "0812" },
-    {
-      crs: "BTN",
-      description: "Brighton",
-      gbttBookedArrival: "0910",
-      realtimeArrival: "0932",
-      realtimeArrivalActual: true,
+const takenService: RttServiceDetailResponse = {
+  service: {
+    scheduleMetadata: {
+      uniqueIdentity: "gb-nr:TAKEN:2026-09-23",
+      namespace: "gb-nr",
+      identity: "TAKEN",
+      departureDate: "2026-09-23",
     },
-  ],
+    locations: [
+      { location: { shortCodes: ["STP"] }, temporalData: { departure: { scheduleAdvertised: "2026-09-23T07:12:00Z" } } },
+      {
+        location: { shortCodes: ["BTN"] },
+        temporalData: {
+          arrival: { scheduleAdvertised: "2026-09-23T08:10:00Z", realtimeActual: "2026-09-23T08:32:00Z", realtimeNoReport: false },
+        },
+      },
+    ],
+  },
 };
 
-const search: RttSearchResponse = {
-  location: { name: "St Pancras", crs: "STP" },
+const search: RttLocationSearchResponse = {
   services: [
     {
-      serviceUid: "TAKEN",
-      runDate: "2026-09-23",
-      atocCode: "TL",
-      atocName: "Thameslink",
-      serviceType: "train",
-      isPassenger: true,
-      locationDetail: { gbttBookedDeparture: "0812", origin: [], destination: [] },
+      scheduleMetadata: {
+        uniqueIdentity: "gb-nr:TAKEN:2026-09-23",
+        namespace: "gb-nr",
+        identity: "TAKEN",
+        departureDate: "2026-09-23",
+        inPassengerService: true,
+      },
+      temporalData: { departure: { scheduleAdvertised: "2026-09-23T07:12:00Z" } },
     },
   ],
 };
@@ -72,8 +75,7 @@ describe("POST /api/check", () => {
   });
 
   it("returns 404 when no matching service is found", async () => {
-    const emptySearch: RttSearchResponse = { location: { name: "St Pancras", crs: "STP" }, services: [] };
-    const app = createApp(fakeClient(emptySearch, {}));
+    const app = createApp(fakeClient({ services: [] }, {}));
 
     const response = await request(app)
       .post("/api/check")
@@ -125,54 +127,53 @@ describe("GET /api/commute", () => {
 });
 
 describe("POST /api/check-commute", () => {
-  const throughService: RttServiceResponse = {
-    serviceUid: "TAKEN",
-    runDate: "2026-09-23",
-    atocCode: "TL",
-    atocName: "Thameslink",
-    locations: [
-      {
-        crs: "BTN",
-        description: "Brighton",
-        gbttBookedDeparture: "0639",
-        gbttBookedArrival: "0639",
-        realtimeArrival: "0639",
-        realtimeArrivalActual: true,
+  const throughService: RttServiceDetailResponse = {
+    service: {
+      scheduleMetadata: {
+        uniqueIdentity: "gb-nr:TAKEN:2026-09-23",
+        namespace: "gb-nr",
+        identity: "TAKEN",
+        departureDate: "2026-09-23",
       },
-      {
-        crs: "GTW",
-        description: "Gatwick Airport",
-        gbttBookedArrival: "0705",
-        gbttBookedDeparture: "0707",
-        realtimeArrival: "0719",
-        realtimeArrivalActual: true,
-      },
-      {
-        crs: "LBG",
-        description: "London Bridge",
-        gbttBookedArrival: "0755",
-        realtimeArrival: "0825",
-        realtimeArrivalActual: true,
-      },
-    ],
+      locations: [
+        {
+          location: { shortCodes: ["BTN"] },
+          temporalData: {
+            departure: { scheduleAdvertised: "2026-09-23T05:39:00Z" },
+            arrival: { scheduleAdvertised: "2026-09-23T05:39:00Z", realtimeActual: "2026-09-23T05:39:00Z", realtimeNoReport: false },
+          },
+        },
+        {
+          location: { shortCodes: ["GTW"] },
+          temporalData: {
+            arrival: { scheduleAdvertised: "2026-09-23T06:05:00Z", realtimeActual: "2026-09-23T06:19:00Z", realtimeNoReport: false },
+            departure: { scheduleAdvertised: "2026-09-23T06:07:00Z" },
+          },
+        },
+        {
+          location: { shortCodes: ["LBG"] },
+          temporalData: {
+            arrival: { scheduleAdvertised: "2026-09-23T06:55:00Z", realtimeActual: "2026-09-23T07:25:00Z", realtimeNoReport: false },
+          },
+        },
+      ],
+    },
   };
 
   function commuteClient(): RttClient {
     return {
-      searchStationToStation: vi.fn(async (fromCrs: string, toCrs: string) => ({
-        location: { name: fromCrs, crs: fromCrs },
+      searchStationToStation: vi.fn(async (fromCrs: string) => ({
         services: [
           {
-            serviceUid: "TAKEN",
-            runDate: "2026-09-23",
-            atocCode: "TL",
-            atocName: "Thameslink",
-            serviceType: "train",
-            isPassenger: true,
-            locationDetail: {
-              gbttBookedDeparture: fromCrs === "GTW" ? "0707" : "0639",
-              origin: [],
-              destination: [],
+            scheduleMetadata: {
+              uniqueIdentity: "gb-nr:TAKEN:2026-09-23",
+              namespace: "gb-nr",
+              identity: "TAKEN",
+              departureDate: "2026-09-23",
+              inPassengerService: true,
+            },
+            temporalData: {
+              departure: { scheduleAdvertised: fromCrs === "GTW" ? "2026-09-23T06:07:00Z" : "2026-09-23T05:39:00Z" },
             },
           },
         ],
