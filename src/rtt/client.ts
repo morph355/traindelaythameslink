@@ -34,8 +34,12 @@ export class RttClient {
       headers: { Authorization: `Bearer ${this.credentials.token}` },
     });
     if (!response.ok) {
+      // RTT's error responses carry a body (usually JSON) explaining *why* -
+      // e.g. an invalid token vs. a valid token with no active plan/subscription
+      // for the gb-nr namespace. Without this, a 401 is a dead end to diagnose.
+      const body = await response.text().catch(() => "");
       throw new RttApiError(
-        `RTT API request to ${path} failed: ${response.status} ${response.statusText}`,
+        `RTT API request to ${path} failed: ${response.status} ${response.statusText}${body ? ` - ${body}` : ""}`,
         response.status,
       );
     }

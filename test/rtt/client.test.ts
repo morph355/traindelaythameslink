@@ -7,6 +7,7 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
     status,
     statusText: ok ? "OK" : "Error",
     json: async () => body,
+    text: async () => JSON.stringify(body),
   } as unknown as Response;
 }
 
@@ -45,6 +46,17 @@ describe("RttClient", () => {
 
     await expect(client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639")).rejects.toThrow(
       RttApiError,
+    );
+  });
+
+  it("includes the response body in the error, so e.g. a 401's actual reason isn't lost", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ message: "No active subscription for gb-nr" }, false, 401));
+    const client = new RttClient({ token: "tok123" }, "https://data.rtt.io", fetchMock);
+
+    await expect(client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639")).rejects.toThrow(
+      /No active subscription for gb-nr/,
     );
   });
 });
