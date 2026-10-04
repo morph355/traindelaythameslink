@@ -32,7 +32,9 @@ if (!auth) {
   );
 }
 
-const client = new RttClient({ token: rttToken });
+const client = new RttClient({ token: rttToken }, undefined, undefined, undefined, {
+  cacheFile: process.env.RTT_CACHE_FILE,
+});
 const app = createApp(client, { auth });
 const port = Number(process.env.PORT ?? 3000);
 
