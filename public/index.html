@@ -38,8 +38,11 @@
   .copy-btn.copied { background: #2e7d32; color: white; border-color: #2e7d32; }
   details summary { cursor: pointer; font-weight: 600; margin-bottom: 0.5rem; }
   .leg { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 0.75rem; }
-  .frame-pane { position: sticky; top: 1rem; }
-  iframe { width: 100%; height: 75vh; border: 1px solid #ccc; border-radius: 8px; }
+  .claim-pane { position: sticky; top: 1rem; }
+  .claim-pane a.button {
+    display: inline-block; padding: 0.7rem 1.2rem; border-radius: 6px;
+    background: #1a5fb4; color: white; font-weight: 600; text-decoration: none;
+  }
   .muted { color: #666; font-size: 0.85rem; }
 </style>
 </head>
@@ -87,15 +90,16 @@
   </details>
 </main>
 
-<aside class="frame-pane">
+<aside class="claim-pane panel">
   <h2 style="margin-top:0">Thameslink Delay Repay form</h2>
   <p class="muted">
-    Copy the details from a result on the left into this form. If it doesn't load below (some
-    sites block being framed), use
-    <a href="https://delayrepay.thameslinkrailway.com/" target="_blank" rel="noopener">open it in a new tab ↗</a>.
+    Thameslink's site blocks being embedded here (a security header on their end - there's no way
+    around it from our side, and no reason to try). Use "Copy claim details" on a result, then open
+    their form and paste it in.
   </p>
-  <iframe id="delay-repay-frame" src="https://delayrepay.thameslinkrailway.com/" loading="lazy"
-    referrerpolicy="no-referrer"></iframe>
+  <a class="button" href="https://delayrepay.thameslinkrailway.com/" target="_blank" rel="noopener">
+    Open Delay Repay form ↗
+  </a>
 </aside>
 
 <template id="custom-leg-template">

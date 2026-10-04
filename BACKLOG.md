@@ -71,9 +71,11 @@ form without retyping them.
 - [x] `GET /api/commute` + `POST /api/check-commute` endpoints
 - [x] UI: one-click outbound presets (06:39/06:56), manual time entry for
       the less predictable return, Today/Yesterday date shortcuts
-- [x] UI: Thameslink's Delay Repay form embedded alongside the results
-      (with an "open in new tab" fallback), and a "copy claim details"
-      button per leg result
+- [x] UI: "copy claim details" button per leg result + an "open Delay
+      Repay form" button - confirmed in real use that Thameslink's site
+      blocks being framed (a security header on their end, no
+      workaround), so this was changed from an embedded iframe to a
+      plain open-in-new-tab button once that was confirmed
 - [ ] Try it against a real delayed journey once RTT credentials are set
       up
 

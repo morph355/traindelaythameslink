@@ -37,11 +37,11 @@ The page has three parts:
 - **Different journey** (collapsed by default) — the general form for a
   one-off journey that isn't your usual commute: add as many legs as you
   need, each with its own from/to/date/time.
-- The right-hand pane embeds the Thameslink Delay Repay form directly, so
-  you can copy each result's details across without switching tabs. Each
-  result has a "Copy claim details" button. If your browser won't let
-  Thameslink's site load in the frame, there's an "open in a new tab"
-  fallback link above it.
+- The right-hand pane has a "Copy claim details" button on each result and
+  a button to open Thameslink's Delay Repay form in a new tab - it can't be
+  embedded directly (their site blocks being framed, a standard security
+  header with no workaround), so it's copy-then-paste rather than side by
+  side.
 
 ## Deploying it somewhere always-on
 
