@@ -5,4 +5,9 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      # Keeps RTT responses across rebuilds so rate-limited checks can resume.
+      RTT_CACHE_FILE: /app/data/rtt-cache.json
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped

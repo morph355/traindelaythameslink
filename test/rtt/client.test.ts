@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { RttApiError, RttClient } from "../../src/rtt/client.js";
 
@@ -184,5 +187,76 @@ describe("RttClient", () => {
     });
     expect(sleep).not.toHaveBeenCalled();
     expect(client.getStatus().recent.at(-1)?.message).toContain("resets in about 30 min");
+  });
+
+  describe("response cache", () => {
+    const dataCalls = (fetchMock: ReturnType<typeof fetchMockWithAccessToken>) =>
+      fetchMock.mock.calls.filter(([u]) => new URL(u).pathname !== "/api/get_access_token").length;
+
+    it("serves a repeat request for a past date from cache, without another RTT call", async () => {
+      const fetchMock = fetchMockWithAccessToken("a", jsonResponse({ services: [] }));
+      const client = new RttClient({ token: "t" }, "https://data.rtt.io", fetchMock);
+
+      await client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639");
+      await client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639");
+      await client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0656");
+
+      expect(dataCalls(fetchMock)).toBe(2); // 0639 once, 0656 once
+    });
+
+    it("keeps past-date responses for a day, but today's for only an hour", async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date(2026, 9, 4, 12, 0));
+        const fetchMock = fetchMockWithAccessToken("a", jsonResponse({ services: [] }), "2099-01-01T00:00:00Z");
+        const client = new RttClient({ token: "t" }, "https://data.rtt.io", fetchMock);
+        const past = new Date(2026, 9, 3);
+        const today = new Date(2026, 9, 4);
+
+        await client.searchStationToStation("BTN", "GTW", past, "0639");
+        await client.searchStationToStation("BTN", "GTW", today, "0639");
+        vi.setSystemTime(new Date(2026, 9, 4, 12, 30));
+        await client.searchStationToStation("BTN", "GTW", past, "0639");
+        await client.searchStationToStation("BTN", "GTW", today, "0639");
+        expect(dataCalls(fetchMock)).toBe(2); // both still cached after 30 min
+
+        vi.setSystemTime(new Date(2026, 9, 4, 13, 30));
+        await client.searchStationToStation("BTN", "GTW", past, "0639");
+        await client.searchStationToStation("BTN", "GTW", today, "0639");
+        expect(dataCalls(fetchMock)).toBe(3); // today's expired, past still cached
+
+        vi.setSystemTime(new Date(2026, 9, 5, 13, 0));
+        await client.searchStationToStation("BTN", "GTW", past, "0639");
+        expect(dataCalls(fetchMock)).toBe(4); // past expired after a day
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not cache failed responses", async () => {
+      const fetchMock = fetchMockWithAccessToken("a", jsonResponse({ error: "boom" }, false, 500));
+      const client = new RttClient({ token: "t" }, "https://data.rtt.io", fetchMock);
+      await expect(client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639")).rejects.toBeInstanceOf(RttApiError);
+      await expect(client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639")).rejects.toBeInstanceOf(RttApiError);
+      expect(dataCalls(fetchMock)).toBe(2);
+    });
+
+    it("persists the cache to a file so a restarted client reuses it", async () => {
+      const dir = mkdtempSync(path.join(tmpdir(), "rtt-cache-"));
+      const cacheFile = path.join(dir, "nested", "cache.json");
+      try {
+        const first = fetchMockWithAccessToken("a", jsonResponse({ services: [] }));
+        await new RttClient({ token: "t" }, "https://data.rtt.io", first, undefined, { cacheFile }).searchStationToStation(
+          "BTN", "GTW", new Date(2026, 8, 23), "0639");
+
+        const second = fetchMockWithAccessToken("a", jsonResponse({ services: [] }));
+        const restarted = new RttClient({ token: "t" }, "https://data.rtt.io", second, undefined, { cacheFile });
+        await restarted.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639");
+
+        expect(dataCalls(second)).toBe(0);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 });

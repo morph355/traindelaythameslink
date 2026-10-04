@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import type { RttLocationSearchResponse, RttServiceDetailResponse } from "./types.js";
 
 const BASE_URL = "https://data.rtt.io";
@@ -27,6 +29,25 @@ const MAX_REQUESTS_PER_MINUTE = 9;
 const WINDOW_MS = 60_000;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Responses for journeys on a past date are final, so they're kept for a day:
+ * if a rate limit stretches one email's checks over hours, the retry only
+ * pays for the calls that never succeeded. Today's/future data can still
+ * change (a train with no actual arrival yet), so it's only kept briefly.
+ */
+const CACHE_TTL_PAST_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_CURRENT_MS = 60 * 60 * 1000;
+
+interface CacheEntry {
+  expiresAt: number;
+  data: unknown;
+}
+
+export interface RttClientOptions {
+  /** If set, the response cache is loaded from / saved to this JSON file so it survives restarts. */
+  cacheFile?: string;
+}
 
 const MAX_ACTIVITY_ENTRIES = 40;
 
@@ -69,7 +90,37 @@ export class RttClient {
     private readonly baseUrl: string = BASE_URL,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
-  ) {}
+    private readonly options: RttClientOptions = {},
+  ) {
+    this.loadCache();
+  }
+
+  private cache = new Map<string, CacheEntry>();
+
+  private loadCache(): void {
+    if (!this.options.cacheFile) return;
+    try {
+      const entries = JSON.parse(readFileSync(this.options.cacheFile, "utf8")) as [string, CacheEntry][];
+      const now = Date.now();
+      for (const [key, entry] of entries) {
+        if (entry.expiresAt > now) this.cache.set(key, entry);
+      }
+    } catch {
+      // No cache file yet, or it's unreadable - start empty.
+    }
+  }
+
+  private saveCache(): void {
+    if (!this.options.cacheFile) return;
+    try {
+      const now = Date.now();
+      for (const [key, entry] of this.cache) if (entry.expiresAt <= now) this.cache.delete(key);
+      mkdirSync(path.dirname(this.options.cacheFile), { recursive: true });
+      writeFileSync(this.options.cacheFile, JSON.stringify([...this.cache]));
+    } catch (err) {
+      this.log(`Couldn't save response cache: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   /**
    * Exchanges the long-life refresh token for a short-life access token,
@@ -157,14 +208,20 @@ export class RttClient {
     }
   }
 
-  private async get<T>(path: string, params: Record<string, string | undefined>): Promise<T> {
-    const url = new URL(`${this.baseUrl}${path}`);
+  private async get<T>(urlPath: string, params: Record<string, string | undefined>): Promise<T> {
+    const url = new URL(`${this.baseUrl}${urlPath}`);
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined) url.searchParams.set(key, value);
     }
 
+    const cacheKey = url.pathname + url.search;
+    const label = `${urlPath} ${url.searchParams.get("code") ?? url.searchParams.get("identity") ?? ""}`.trim();
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      this.log(`${label} -> cached (no RTT call used)`);
+      return cached.data as T;
+    }
     const accessToken = await this.getAccessToken();
-    const label = `${path} ${url.searchParams.get("code") ?? url.searchParams.get("identity") ?? ""}`.trim();
     const send = async (): Promise<Response> => {
       await this.acquireSlot();
       this.log(`Requesting ${label}`);
@@ -197,11 +254,14 @@ export class RttClient {
       // for the gb-nr namespace. Without this, a 401 is a dead end to diagnose.
       const body = await response.text().catch(() => "");
       throw new RttApiError(
-        `RTT API request to ${path} failed: ${response.status} ${response.statusText}${body ? ` - ${body}` : ""}`,
+        `RTT API request to ${urlPath} failed: ${response.status} ${response.statusText}${body ? ` - ${body}` : ""}`,
         response.status,
       );
     }
-    return (await response.json()) as T;
+    const data = (await response.json()) as T;
+    this.cache.set(cacheKey, { expiresAt: Date.now() + cacheTtlMs(url), data });
+    this.saveCache();
+    return data;
   }
 
   /**
@@ -229,6 +289,16 @@ export class RttClient {
       departureDate: isoDate(date),
     });
   }
+}
+
+/** The journey date a request is for: `departureDate` (service) or the date part of `timeFrom` (location). */
+function requestDate(url: URL): string | undefined {
+  return url.searchParams.get("departureDate") ?? url.searchParams.get("timeFrom")?.slice(0, 10) ?? undefined;
+}
+
+function cacheTtlMs(url: URL): number {
+  const date = requestDate(url);
+  return date !== undefined && date < isoDate(new Date()) ? CACHE_TTL_PAST_MS : CACHE_TTL_CURRENT_MS;
 }
 
 function isoDate(date: Date): string {
