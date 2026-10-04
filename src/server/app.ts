@@ -29,6 +29,10 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
     res.json(COMMUTE);
   });
 
+  app.get("/api/rtt-status", (_req, res) => {
+    res.json(client.getStatus());
+  });
+
   app.post("/api/check-commute", async (req, res) => {
     let request;
     try {
@@ -51,7 +55,10 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
         return res.status(404).json({ error: err.message });
       }
       console.error("POST /api/check-commute failed:", err);
-      return res.status(502).json({ error: "Couldn't fetch train data. Try again shortly." });
+      return res.status(502).json({
+        error: "Couldn't fetch train data. Try again shortly.",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 
@@ -77,7 +84,10 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
         return res.status(404).json({ error: err.message });
       }
       console.error("POST /api/check failed:", err);
-      return res.status(502).json({ error: "Couldn't fetch train data. Try again shortly." });
+      return res.status(502).json({
+        error: "Couldn't fetch train data. Try again shortly.",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 

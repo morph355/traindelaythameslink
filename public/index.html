@@ -43,6 +43,9 @@
     display: inline-block; padding: 0.7rem 1.2rem; border-radius: 6px;
     background: #1a5fb4; color: white; font-weight: 600; text-decoration: none;
   }
+  .activity { font-family: ui-monospace, monospace; font-size: 0.78rem; color: #444; background: #f4f4f4;
+    border-radius: 6px; padding: 0.5rem 0.7rem; max-height: 12rem; overflow-y: auto; margin-top: 0.5rem; }
+  .activity div { white-space: pre-wrap; }
   .muted { color: #666; font-size: 0.85rem; }
 </style>
 </head>
@@ -64,6 +67,13 @@
 
     <h2 style="margin-top:1rem">Outbound (morning)</h2>
     <div class="row" id="outbound-presets"></div>
+    <div class="row">
+      <div>
+        <label>Departure time</label>
+        <input type="time" id="outbound-time" />
+      </div>
+      <button type="button" class="primary" id="check-outbound">Check outbound journey</button>
+    </div>
 
     <h2>Return (afternoon/evening)</h2>
     <p class="muted">Your return varies, so pick the time you actually left.</p>
@@ -76,6 +86,7 @@
     </div>
 
     <div id="commute-results"></div>
+    <div id="rtt-activity"></div>
   </div>
 
   <details class="panel">
@@ -138,8 +149,27 @@
   });
   setDate(new Date());
 
+  document.getElementById("check-outbound").addEventListener("click", () => {
+    const time = document.getElementById("outbound-time").value;
+    if (!time) {
+      alert("Enter the time you left.");
+      return;
+    }
+    runCommuteCheck("outbound", time.replace(":", ""));
+  });
+
   async function loadCommuteConfig() {
+    try {
+      await loadCommuteConfigUnsafe();
+    } catch (err) {
+      document.getElementById("outbound-presets").innerHTML =
+        `<p class="muted">Couldn't load your usual times (${err.message}) - enter the time below.</p>`;
+    }
+  }
+
+  async function loadCommuteConfigUnsafe() {
     const res = await fetch("/api/commute");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     commuteConfig = await res.json();
 
     document.getElementById("route-description").textContent =
@@ -152,7 +182,10 @@
       btn.type = "button";
       btn.className = "preset primary";
       btn.textContent = preset.label;
-      btn.addEventListener("click", () => runCommuteCheck("outbound", preset.time));
+      btn.addEventListener("click", () => {
+        document.getElementById("outbound-time").value = `${preset.time.slice(0, 2)}:${preset.time.slice(2)}`;
+        runCommuteCheck("outbound", preset.time);
+      });
       container.appendChild(btn);
     }
   }
@@ -166,10 +199,44 @@
     runCommuteCheck("return", time.replace(":", ""));
   });
 
+  // Live view of what the server is doing against the Realtime Trains API.
+  let statusTimer;
+  function startStatusPolling() {
+    stopStatusPolling();
+    const el = document.getElementById("rtt-activity");
+    const render = async () => {
+      try {
+        const res = await fetch("/api/rtt-status");
+        if (!res.ok) return;
+        const s = await res.json();
+        const fmt = (t) => new Date(t).toLocaleTimeString();
+        const remaining = s.rateLimitRemaining || {};
+        const parts = [`${s.requestsLastMinute}/${s.limitPerMinute} requests used in the last minute`];
+        if (remaining.minute !== undefined) parts.push(`RTT reports ${remaining.minute} left this minute, ${remaining.hour} this hour, ${remaining.day} today`);
+        if (s.pausedUntil) parts.push(`paused until ${fmt(s.pausedUntil)} (${Math.max(0, Math.ceil((s.pausedUntil - Date.now()) / 1000))}s)`);
+        el.innerHTML = '<p class="muted"></p><div class="activity"></div>';
+        el.querySelector("p").textContent = parts.join(" - ");
+        const log = el.querySelector(".activity");
+        for (const entry of s.recent.slice(-15)) {
+          const line = document.createElement("div");
+          line.textContent = `${fmt(entry.at)}  ${entry.message}`;
+          log.appendChild(line);
+        }
+        log.scrollTop = log.scrollHeight;
+      } catch (_) { /* status is best-effort */ }
+    };
+    render();
+    statusTimer = setInterval(render, 1000);
+  }
+  function stopStatusPolling() {
+    clearInterval(statusTimer);
+  }
+
   async function runCommuteCheck(direction, time) {
     const date = document.getElementById("journey-date").value;
     const resultsEl = document.getElementById("commute-results");
-    resultsEl.innerHTML = "<p>Checking...</p>";
+    resultsEl.innerHTML = "<p>Checking... this can take up to a minute or two because of Realtime Trains' rate limit.</p>";
+    startStatusPolling();
     try {
       const response = await fetch("/api/check-commute", {
         method: "POST",
@@ -178,14 +245,29 @@
       });
       const body = await response.json();
       if (!response.ok) {
-        resultsEl.innerHTML = `<p class="error">${(body.issues || [body.error]).join("\n")}</p>`;
+        showError(resultsEl, body);
         return;
       }
       resultsEl.innerHTML = body.results.map(storeAndRenderLegResult).join("");
       attachCopyHandlers(resultsEl);
     } catch (err) {
-      resultsEl.innerHTML = `<p class="error">${err.message}</p>`;
+      showError(resultsEl, { error: err.message });
+    } finally {
+      await finishStatusPolling();
     }
+  }
+
+  function showError(el, body) {
+    el.innerHTML = '<p class="error"></p><p class="muted detail"></p>';
+    el.querySelector(".error").textContent = (body.issues || [body.error]).join("\n");
+    el.querySelector(".detail").textContent = body.detail ? `Details: ${body.detail}` : "";
+  }
+
+  async function finishStatusPolling() {
+    stopStatusPolling();
+    // One last refresh so the final requests are visible after the check ends.
+    startStatusPolling();
+    stopStatusPolling();
   }
 
   function storeAndRenderLegResult(r) {
@@ -270,7 +352,8 @@
     }));
 
     const resultsEl = document.getElementById("custom-results");
-    resultsEl.innerHTML = "<p>Checking...</p>";
+    resultsEl.innerHTML = "<p>Checking... this can take a minute because of Realtime Trains' rate limit (live status is shown under the commute section).</p>";
+    startStatusPolling();
     try {
       const response = await fetch("/api/check", {
         method: "POST",
@@ -279,13 +362,15 @@
       });
       const body = await response.json();
       if (!response.ok) {
-        resultsEl.innerHTML = `<p class="error">${(body.issues || [body.error]).join("\n")}</p>`;
+        showError(resultsEl, body);
         return;
       }
       resultsEl.innerHTML = body.results.map(storeAndRenderLegResult).join("");
       attachCopyHandlers(resultsEl);
     } catch (err) {
-      resultsEl.innerHTML = `<p class="error">${err.message}</p>`;
+      showError(resultsEl, { error: err.message });
+    } finally {
+      await finishStatusPolling();
     }
   });
 

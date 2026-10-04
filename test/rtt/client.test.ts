@@ -134,4 +134,55 @@ describe("RttClient", () => {
     expect(sleep).toHaveBeenCalledWith(2500);
     expect(dataCalls).toBe(2);
   });
+
+  it("spaces requests so no more than 9 go out per minute", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = fetchMockWithAccessToken("a", jsonResponse({ services: [] }));
+      const client = new RttClient({ token: "t" }, "https://data.rtt.io", fetchMock);
+      const dataCalls = () => fetchMock.mock.calls.filter(([u]) => new URL(u).pathname !== "/api/get_access_token").length;
+
+      const all = Promise.all(
+        Array.from({ length: 10 }, () => client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639")),
+      );
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(dataCalls()).toBe(9);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await all;
+      expect(dataCalls()).toBe(10);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports recent activity and RTT's rate-limit headers via getStatus", async () => {
+    const data = {
+      ...jsonResponse({ services: [] }),
+      headers: new Headers({ "x-ratelimit-remaining-minute": "7", "x-ratelimit-remaining-hour": "90", "x-ratelimit-remaining-day": "990" }),
+    } as unknown as Response;
+    const client = new RttClient({ token: "t" }, "https://data.rtt.io", fetchMockWithAccessToken("a", data));
+
+    await client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639");
+
+    const status = client.getStatus();
+    expect(status.requestsLastMinute).toBe(1);
+    expect(status.rateLimitRemaining).toEqual({ minute: 7, hour: 90, day: 990 });
+    expect(status.recent.map((e) => e.message)).toContain("/gb-nr/location BTN -> 200");
+    expect(JSON.stringify(status)).not.toContain("Bearer");
+  });
+
+  it("does not wait when RTT says the limit resets in more than a minute", async () => {
+    const limited = {
+      ...jsonResponse({ error: "Rate limit exceeded" }, false, 429),
+      headers: new Headers({ "retry-after": "1800" }),
+    } as unknown as Response;
+    const sleep = vi.fn(async () => {});
+    const client = new RttClient({ token: "t" }, "https://data.rtt.io", fetchMockWithAccessToken("a", limited), sleep);
+
+    await expect(client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639")).rejects.toMatchObject({
+      status: 429,
+    });
+    expect(sleep).not.toHaveBeenCalled();
+    expect(client.getStatus().recent.at(-1)?.message).toContain("resets in about 30 min");
+  });
 });
