@@ -3,8 +3,20 @@ import type { RttLocationSearchResponse, RttServiceDetailResponse } from "./type
 const BASE_URL = "https://data.rtt.io";
 
 export interface RttCredentials {
-  /** Bearer token from https://api-portal.rtt.io/ (the "next-gen" API - api.rtt.io/Basic Auth is retired). */
+  /**
+   * The token shown on https://api-portal.rtt.io/'s dashboard. For a
+   * personal-use account this is a long-life *refresh* token, not usable
+   * directly against /gb-nr/* - it must first be exchanged for a short-life
+   * access token via GET /api/get_access_token (the dashboard's own label,
+   * "use the following token to request an access token", says as much).
+   * RttClient does that exchange itself and caches the result.
+   */
   token: string;
+}
+
+interface AccessTokenResponse {
+  token: string;
+  validUntil: string;
 }
 
 export class RttApiError extends Error {
@@ -18,11 +30,39 @@ export class RttApiError extends Error {
 }
 
 export class RttClient {
+  private cachedAccessToken: { token: string; expiresAtMs: number } | undefined;
+
   constructor(
     private readonly credentials: RttCredentials,
     private readonly baseUrl: string = BASE_URL,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
+
+  /**
+   * Exchanges the long-life refresh token for a short-life access token,
+   * reusing the cached one until shortly before it expires.
+   */
+  private async getAccessToken(): Promise<string> {
+    if (this.cachedAccessToken && this.cachedAccessToken.expiresAtMs > Date.now()) {
+      return this.cachedAccessToken.token;
+    }
+
+    const response = await this.fetchImpl(`${this.baseUrl}/api/get_access_token`, {
+      headers: { Authorization: `Bearer ${this.credentials.token}` },
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new RttApiError(
+        `RTT API request to /api/get_access_token failed: ${response.status} ${response.statusText}${body ? ` - ${body}` : ""}`,
+        response.status,
+      );
+    }
+    const data = (await response.json()) as AccessTokenResponse;
+    // Refresh 30s early so a request never races an expiring token.
+    const expiresAtMs = new Date(data.validUntil).getTime() - 30_000;
+    this.cachedAccessToken = { token: data.token, expiresAtMs };
+    return data.token;
+  }
 
   private async get<T>(path: string, params: Record<string, string | undefined>): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
@@ -30,8 +70,9 @@ export class RttClient {
       if (value !== undefined) url.searchParams.set(key, value);
     }
 
+    const accessToken = await this.getAccessToken();
     const response = await this.fetchImpl(url.toString(), {
-      headers: { Authorization: `Bearer ${this.credentials.token}` },
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!response.ok) {
       // RTT's error responses carry a body (usually JSON) explaining *why* -

@@ -187,13 +187,13 @@ everywhere. See `PLAN.md` "Data source" for the full story.
       check returned a genuine `401 Unauthorized` from `data.rtt.io`
       (not a network failure) - request format and auth header are
       correct, the token itself isn't being accepted yet (see Epic 9)
-- [ ] A genuinely successful live check, once the token/entitlement issue
-      in Epic 9 is resolved
+- [ ] A genuinely successful live check, once the token fix in Epic 9 is
+      deployed
 
-## Epic 9 — First live run on the NAS: two real bugs found ([#9](https://github.com/morph355/traindelaythameslink/issues/9))
+## Epic 9 — First live run on the NAS: three real bugs found ([#9](https://github.com/morph355/traindelaythameslink/issues/9))
 
-The first real end-to-end use (NAS, real token, real email) surfaced two
-bugs no amount of mocked testing would have caught.
+The first real end-to-end use (NAS, real token, real email) surfaced
+three bugs no amount of mocked testing would have caught.
 
 - [x] **Crash on any unexpected RTT error.** Express 4 (unlike 5) does
       not catch promise rejections thrown from async route handlers.
@@ -217,10 +217,25 @@ bugs no amount of mocked testing would have caught.
       note on top is the natural way to do this. Fixed alongside the
       `trainpal.ts` work in Epic 5 - PDF attachments no longer exclude a
       message, and typed text + PDF-derived data now merge.
+- [x] **The real 401 was the token/access-token exchange, not an invalid
+      token.** The RTT API portal dashboard labels the personal-use
+      account's token "use the following token to request an access
+      token in the API" - it's a long-life *refresh* token, not usable
+      directly against `/gb-nr/*`. `RttClient` was sending it straight
+      through as the Bearer token for every request, which 401s. Per
+      RTT's own spec (`realtimetrains/api-specification`), a refresh
+      token must first be exchanged via `GET /api/get_access_token` for
+      a short-life access token, which is what `/gb-nr/*` actually
+      wants. Fixed: `RttClient` does that exchange itself, caches the
+      result until shortly before `validUntil`, and re-exchanges once it
+      expires - callers are unaffected, `RttCredentials.token` still
+      just takes the dashboard token as-is. Also improved the earlier
+      `RttApiError` to include the response body, which is what
+      surfaced the account's exact entitlements/namespace details while
+      diagnosing this.
 - [ ] User needs to correct `AGENTMAIL_OWNER_EMAIL` in `.env` to their
       real sending address (was set to a different address than the one
-      actually used) and resolve the RTT token/entitlement issue from
-      Epic 8, then redeploy
+      actually used) and redeploy with the access-token fix above
 
 ## Explicitly not planned
 
