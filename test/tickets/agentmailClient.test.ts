@@ -120,7 +120,7 @@ describe("downloadAttachment", () => {
 });
 
 describe("listUnprocessedRequestEmails", () => {
-  it("excludes messages with a PDF attachment and ones already labelled processed", async () => {
+  it("includes messages with a PDF attachment (a forwarded ticket is a valid request) but excludes ones already labelled processed", async () => {
     const list = vi.fn().mockResolvedValue({
       count: 3,
       messages: [
@@ -134,7 +134,15 @@ describe("listUnprocessedRequestEmails", () => {
     const results = await listUnprocessedRequestEmails(client, "inbox", ["me@example.com"], "processed");
 
     expect(list).toHaveBeenCalledWith("inbox", { from: ["me@example.com"], limit: 25, ascending: true });
-    expect(results).toEqual([{ messageId: "NEW", from: "me@example.com", timestamp: expect.any(Date) }]);
+    expect(results).toEqual([
+      {
+        messageId: "TICKET",
+        from: "me@example.com",
+        timestamp: expect.any(Date),
+        pdfAttachments: [{ attachmentId: "A", filename: "t.pdf", size: 1 }],
+      },
+      { messageId: "NEW", from: "me@example.com", timestamp: expect.any(Date), pdfAttachments: [] },
+    ]);
   });
 });
 

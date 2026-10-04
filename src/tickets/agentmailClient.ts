@@ -64,13 +64,16 @@ export interface RequestEmail {
   messageId: string;
   from: string;
   timestamp: Date;
+  /** Ticket PDFs attached, if any - a forwarded TrainPal booking is a valid request too, not just plain text. */
+  pdfAttachments: AgentMail.Attachment[];
 }
 
 /**
  * Recent messages in `inboxId` from a sender matching one of `fromFilters`
- * that have NO PDF attachment (so aren't a forwarded ticket, see
- * `listTicketEmails`) and aren't already labelled `excludeLabel` -
- * candidate ad hoc "check my journey" requests.
+ * that aren't already labelled `excludeLabel` - candidate "check my
+ * journey" requests, whether that's typed "out:/back:" text, a forwarded
+ * TrainPal ticket, or both (as a real one turned out to be - someone
+ * forwarding a booking naturally adds a note on top of it).
  */
 export async function listUnprocessedRequestEmails(
   client: AgentMailClient,
@@ -85,8 +88,13 @@ export async function listUnprocessedRequestEmails(
   });
 
   return response.messages
-    .filter((m) => !(m.attachments ?? []).some(isPdf) && !(m.labels ?? []).includes(excludeLabel))
-    .map((m) => ({ messageId: m.messageId, from: m.from, timestamp: m.timestamp }));
+    .filter((m) => !(m.labels ?? []).includes(excludeLabel))
+    .map((m) => ({
+      messageId: m.messageId,
+      from: m.from,
+      timestamp: m.timestamp,
+      pdfAttachments: (m.attachments ?? []).filter(isPdf),
+    }));
 }
 
 /** Full plain-text body of a message. */

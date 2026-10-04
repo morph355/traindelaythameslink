@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type ErrorRequestHandler } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { basicAuth } from "./basicAuth.js";
@@ -37,7 +37,8 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
       if (err instanceof ValidationError) {
         return res.status(400).json({ issues: err.issues });
       }
-      throw err;
+      console.error("POST /api/check-commute failed to parse request:", err);
+      return res.status(500).json({ error: "Something went wrong handling that request." });
     }
 
     const spec = buildCommuteJourneySpec(request.direction, request.date, request.bookedDepartureTime);
@@ -49,7 +50,8 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
       if (err instanceof NoMatchingServiceError) {
         return res.status(404).json({ error: err.message });
       }
-      throw err;
+      console.error("POST /api/check-commute failed:", err);
+      return res.status(502).json({ error: "Couldn't fetch train data. Try again shortly." });
     }
   });
 
@@ -63,7 +65,8 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
       if (err instanceof ValidationError) {
         return res.status(400).json({ issues: err.issues });
       }
-      throw err;
+      console.error("POST /api/check failed to parse request:", err);
+      return res.status(500).json({ error: "Something went wrong handling that request." });
     }
 
     try {
@@ -73,9 +76,21 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
       if (err instanceof NoMatchingServiceError) {
         return res.status(404).json({ error: err.message });
       }
-      throw err;
+      console.error("POST /api/check failed:", err);
+      return res.status(502).json({ error: "Couldn't fetch train data. Try again shortly." });
     }
   });
+
+  // Last-resort safety net: Express 4 doesn't catch rejected promises from
+  // async handlers on its own, so any route that forgets its own try/catch
+  // would otherwise crash the whole process instead of returning an error.
+  const handleError: ErrorRequestHandler = (err, _req, res, _next) => {
+    console.error("Unhandled error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Something went wrong." });
+    }
+  };
+  app.use(handleError);
 
   return app;
 }

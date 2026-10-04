@@ -71,6 +71,15 @@ leg, ready to copy straight into the claim form - no need to open the app
 at all, though the reply links back to it (`APP_URL`) in case you want to
 check something else.
 
+You can also just **forward your TrainPal booking confirmation** to the
+same address, with or without the `out:`/`back:` lines on top - the app
+reads the booked times off the attached ticket PDFs (specifically their
+filenames, which name the real stations; the PDF text itself sometimes
+shows a fare-group code instead). If you add `out:`/`back:` text too
+(the natural thing to do when forwarding on the day something actually
+went wrong), that always wins over the booked time, since it reflects
+what happened rather than just what was planned.
+
 If the body doesn't match the format, the reply explains it instead of
 going silent.
 

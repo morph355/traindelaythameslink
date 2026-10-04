@@ -217,4 +217,23 @@ describe("POST /api/check-commute", () => {
     expect(response.body.results[0].leg.fromCrs).toBe("LBG");
     expect(response.body.results[1].leg.toCrs).toBe("BTN");
   });
+
+  it("returns a clean 502 instead of crashing when the RTT API itself errors (e.g. 401)", async () => {
+    // Regression test: Express 4 does not catch promise rejections thrown
+    // from async route handlers, so re-throwing an unexpected error here
+    // used to crash the whole process instead of responding - which a real
+    // RTT 401 Unauthorized triggered in production.
+    const client = {
+      searchStationToStation: vi.fn().mockRejectedValue(new Error("RTT API request to /gb-nr/location failed: 401 Unauthorized")),
+      getService: vi.fn(),
+    } as unknown as RttClient;
+    const app = createApp(client);
+
+    const response = await request(app)
+      .post("/api/check-commute")
+      .send({ direction: "outbound", date: "2026-09-23", time: "0639" });
+
+    expect(response.status).toBe(502);
+    expect(response.body.error).toBeTruthy();
+  });
 });

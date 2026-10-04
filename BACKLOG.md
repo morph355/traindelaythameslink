@@ -89,10 +89,23 @@ in by hand. See `PLAN.md`.
 - [x] `src/tickets/agentmailClient.ts`: list candidate ticket emails
       (sender match + PDF attachment present), download attachment bytes
 - [x] `src/tickets/pdfText.ts`: extract plain text from a PDF buffer
-- [ ] `src/tickets/trainpal.ts`: parse extracted text into journey
-      fields - blocked on a real forwarded sample to build against
+- [x] `src/tickets/trainpal.ts`: parses TrainPal's ticket PDF *filenames*
+      (e.g. `passenger_Brighton_to_Gatwick Airport_23_Sep_0656.pdf`),
+      which turned out more reliable than the PDF body text - for a
+      London terminus the body shows a fare-group code ("THK") rather
+      than the actual station booked. Built and tested against a real
+      forwarded booking (4 ticket PDFs + E-receipt) once one arrived -
+      the earlier "blocked on a sample" is resolved
+- [x] Wired into `processJourneyRequests` as a fallback: typed
+      `out:`/`back:` text still wins when present (it reflects what
+      actually happened, not just what was booked), PDF-derived times
+      fill in whatever the text didn't cover - which matched exactly how
+      a real forward naturally arrived (ticket PDFs + a note typed on
+      top)
 - [ ] Server: "check for new tickets" endpoint + UI list of parsed
-      journeys that pre-fill the checker (one click, no auto-submit)
+      journeys that pre-fill the checker - superseded by the email
+      fallback above for the common case; revisit only if a pure forward
+      with no typed note turns out to be common too
 
 ## Epic 6 — Always-on deployment (Synology) ([#6](https://github.com/morph355/traindelaythameslink/issues/6))
 
@@ -170,10 +183,44 @@ everywhere. See `PLAN.md` "Data source" for the full story.
 - [x] All affected tests rewritten against realistic fixtures (UTC `Z`
       timestamps, not bare local time - which is what caught the timezone
       bug above); 82 tests passing, clean typecheck
-- [ ] Confirmed against the live API - blocked from reaching `data.rtt.io`
-      from this dev sandbox too (`Host not in allowlist`, same as several
-      other external domains this session); needs a real run with a real
-      token from a normal network to confirm end-to-end
+- [x] Confirmed the wiring reaches the real API from the NAS: a live
+      check returned a genuine `401 Unauthorized` from `data.rtt.io`
+      (not a network failure) - request format and auth header are
+      correct, the token itself isn't being accepted yet (see Epic 9)
+- [ ] A genuinely successful live check, once the token/entitlement issue
+      in Epic 9 is resolved
+
+## Epic 9 — First live run on the NAS: two real bugs found ([#9](https://github.com/morph355/traindelaythameslink/issues/9))
+
+The first real end-to-end use (NAS, real token, real email) surfaced two
+bugs no amount of mocked testing would have caught.
+
+- [x] **Crash on any unexpected RTT error.** Express 4 (unlike 5) does
+      not catch promise rejections thrown from async route handlers.
+      `/api/check-commute` and `/api/check` re-threw anything that
+      wasn't `NoMatchingServiceError`, assuming Express would turn it
+      into a response - it doesn't in v4, so Node treated it as an
+      unhandled rejection and crashed the process. `restart:
+      unless-stopped` then restarted the container, and the browser's
+      in-flight `fetch()` saw the reset connection as "Failed to fetch"
+      with no useful detail. First real RTT error (a 401, see Epic 8)
+      hit exactly this path. Fixed: every route catches all errors,
+      logs server-side, responds with a real status instead of
+      throwing; added a final Express error-handling middleware as a
+      safety net. Regression test added using the exact error from the
+      production log.
+- [x] **Email-checker wouldn't have processed the real test email even
+      once the sender address is fixed.** `listUnprocessedRequestEmails`
+      excluded any message with a PDF attachment outright, assuming a
+      ticket forward and a typed "out:/back:" request were mutually
+      exclusive. A real one wasn't: forwarding the booking and adding a
+      note on top is the natural way to do this. Fixed alongside the
+      `trainpal.ts` work in Epic 5 - PDF attachments no longer exclude a
+      message, and typed text + PDF-derived data now merge.
+- [ ] User needs to correct `AGENTMAIL_OWNER_EMAIL` in `.env` to their
+      real sending address (was set to a different address than the one
+      actually used) and resolve the RTT token/entitlement issue from
+      Epic 8, then redeploy
 
 ## Explicitly not planned
 

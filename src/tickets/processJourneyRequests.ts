@@ -8,9 +8,11 @@ import {
   getMessageText,
   listUnprocessedRequestEmails,
   replyToMessage,
+  type RequestEmail,
 } from "./agentmailClient.js";
 import { FORMAT_HELP, JourneyRequestParseError, parseJourneyRequest } from "./journeyRequest.js";
 import { composeReplyText, type DirectionResult } from "./replyComposer.js";
+import { findCommuteTimesFromAttachments } from "./trainpal.js";
 
 export const PROCESSED_LABEL = "checked";
 
@@ -24,37 +26,65 @@ export interface ProcessJourneyRequestsOptions {
   appUrl?: string;
 }
 
-/** Checks the inbox once for new "out:/back:" request emails from the owner and replies to each. */
+/**
+ * Checks the inbox once for new request emails from the owner and replies
+ * to each - whether that's typed "out:/back:" text, a forwarded TrainPal
+ * ticket, or both.
+ */
 export async function processJourneyRequests(options: ProcessJourneyRequestsOptions): Promise<{ processed: number }> {
   const { agentMail, inboxId, ownerEmail } = options;
 
   const candidates = await listUnprocessedRequestEmails(agentMail, inboxId, [ownerEmail], PROCESSED_LABEL);
 
   for (const candidate of candidates) {
-    await handleOne(options, candidate.messageId, candidate.timestamp);
+    await handleOne(options, candidate);
   }
 
   return { processed: candidates.length };
 }
 
-async function handleOne(
-  options: ProcessJourneyRequestsOptions,
-  messageId: string,
-  receivedAt: Date,
-): Promise<void> {
-  const { agentMail, rtt, inboxId, appUrl } = options;
-  const body = await getMessageText(agentMail, inboxId, messageId);
+interface ResolvedRequest {
+  date: Date;
+  outboundTime?: string;
+  returnTime?: string;
+}
 
-  let request;
+function resolveRequest(body: string, receivedAt: Date, pdfFilenames: string[]): ResolvedRequest | undefined {
+  let textRequest;
   try {
-    request = parseJourneyRequest(body, receivedAt);
+    textRequest = parseJourneyRequest(body, receivedAt);
   } catch (err) {
-    if (err instanceof JourneyRequestParseError) {
-      await replyToMessage(agentMail, inboxId, messageId, FORMAT_HELP);
-      await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
-      return;
-    }
-    throw err;
+    if (!(err instanceof JourneyRequestParseError)) throw err;
+    textRequest = undefined;
+  }
+
+  const pdfTimes =
+    pdfFilenames.length > 0 ? findCommuteTimesFromAttachments(pdfFilenames, receivedAt.getFullYear()) : undefined;
+
+  const outboundTime = textRequest?.outboundTime ?? pdfTimes?.outboundTime;
+  const returnTime = textRequest?.returnTime ?? pdfTimes?.returnTime;
+  if (!outboundTime && !returnTime) return undefined;
+
+  const date = textRequest?.date ?? (pdfTimes?.date ? new Date(pdfTimes.date) : startOfDay(receivedAt));
+  return { date, outboundTime, returnTime };
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+async function handleOne(options: ProcessJourneyRequestsOptions, candidate: RequestEmail): Promise<void> {
+  const { agentMail, rtt, inboxId, appUrl } = options;
+  const { messageId, timestamp: receivedAt, pdfAttachments } = candidate;
+
+  const body = await getMessageText(agentMail, inboxId, messageId);
+  const pdfFilenames = pdfAttachments.map((a) => a.filename).filter((f): f is string => Boolean(f));
+
+  const request = resolveRequest(body, receivedAt, pdfFilenames);
+  if (!request) {
+    await replyToMessage(agentMail, inboxId, messageId, FORMAT_HELP);
+    await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
+    return;
   }
 
   const results: DirectionResult[] = [];
