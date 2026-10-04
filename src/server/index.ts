@@ -13,6 +13,13 @@ if (!rttToken) {
   process.exit(1);
 }
 
+if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rttToken)) {
+  console.warn(
+    "RTT_TOKEN looks like a UUID (a token ID), not the issued refresh token. Every RTT request " +
+      "will fail with 401. Use the much longer refresh token from https://api-portal.rtt.io/.",
+  );
+}
+
 const authUsername = process.env.APP_USERNAME;
 const authPassword = process.env.APP_PASSWORD;
 const auth = authUsername && authPassword ? { username: authUsername, password: authPassword } : undefined;

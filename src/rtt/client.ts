@@ -19,6 +19,12 @@ interface AccessTokenResponse {
   validUntil: string;
 }
 
+/** RTT allows ~10 requests/minute, so a 429 is routine: wait out Retry-After and retry. */
+const MAX_RATE_LIMIT_RETRIES = 2;
+const MAX_RETRY_WAIT_MS = 65_000;
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export class RttApiError extends Error {
   constructor(
     message: string,
@@ -36,6 +42,7 @@ export class RttClient {
     private readonly credentials: RttCredentials,
     private readonly baseUrl: string = BASE_URL,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
   ) {}
 
   /**
@@ -71,9 +78,20 @@ export class RttClient {
     }
 
     const accessToken = await this.getAccessToken();
-    const response = await this.fetchImpl(url.toString(), {
+    let response = await this.fetchImpl(url.toString(), {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    for (let attempt = 0; response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES; attempt++) {
+      const retryAfterSeconds = Number(response.headers?.get("retry-after"));
+      const waitMs = Math.min(
+        (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds : 15) * 1000 + 500,
+        MAX_RETRY_WAIT_MS,
+      );
+      await this.sleep(waitMs);
+      response = await this.fetchImpl(url.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    }
     if (!response.ok) {
       // RTT's error responses carry a body (usually JSON) explaining *why* -
       // e.g. an invalid token vs. a valid token with no active plan/subscription

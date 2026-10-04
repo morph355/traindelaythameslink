@@ -113,4 +113,25 @@ describe("RttClient", () => {
       /No active subscription for gb-nr/,
     );
   });
+
+  it("waits out Retry-After on a 429 and retries the data request", async () => {
+    let dataCalls = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (new URL(url).pathname === "/api/get_access_token") {
+        return jsonResponse({ token: "a", validUntil: "2099-01-01T00:00:00Z" });
+      }
+      dataCalls++;
+      if (dataCalls === 1) {
+        return { ...jsonResponse({ error: "Rate limit exceeded" }, false, 429), headers: new Headers({ "retry-after": "2" }) } as unknown as Response;
+      }
+      return jsonResponse({ services: [] });
+    });
+    const sleep = vi.fn(async () => {});
+    const client = new RttClient({ token: "t" }, "https://data.rtt.io", fetchMock, sleep);
+
+    await client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639");
+
+    expect(sleep).toHaveBeenCalledWith(2500);
+    expect(dataCalls).toBe(2);
+  });
 });
