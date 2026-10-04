@@ -6,9 +6,24 @@ import type {
   RttServiceDetailResponse,
 } from "./types.js";
 
-/** Converts an RTT ISO datetime to local UK clock time as an HHmm string, independent of server timezone. */
+const HAS_TIMEZONE = /(Z|[+-]\d{2}:?\d{2})$/i;
+
+/**
+ * Converts an RTT ISO datetime to local UK clock time as an HHmm string,
+ * independent of server timezone.
+ *
+ * The live RTT API returns offset-less datetimes (e.g. "2026-10-03T06:58:00")
+ * which are already UK local time, so those are read as-is. Parsing them with
+ * `new Date()` would treat them as the server's timezone (UTC in a container)
+ * and shift every time by an hour during BST. Datetimes that do carry an
+ * offset (Z or +01:00) are converted properly.
+ */
 export function toLondonHHmm(iso: string | undefined): string | undefined {
   if (!iso) return undefined;
+  if (!HAS_TIMEZONE.test(iso)) {
+    const match = /T(\d{2}):(\d{2})/.exec(iso);
+    return match ? `${match[1]}${match[2]}` : undefined;
+  }
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/London",
     hour: "2-digit",
