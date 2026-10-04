@@ -39,8 +39,18 @@ won't come from the clone - create it there directly).
 4. Confirm it's up: from a device on your LAN, open
    `http://<nas-ip>:3000`.
 
-To update later: `git pull` in that folder, then re-build the project in
-Container Manager (or `docker compose up -d --build` over SSH).
+To update later, run `./scripts/update.sh` in that folder over SSH. It
+does `git pull`, `docker compose up -d --build` and recreates only the
+container - there's no need to remove the project, container or image
+first (Docker's layer cache keeps rebuilds quick).
+
+**Your `.env` is never touched by an update.** It's git-ignored, so
+`git pull` can't overwrite it. If it gets reset, something else is
+rewriting it (e.g. a Task Scheduler task or setup script containing
+`cat > .env`) - delete that script rather than re-running it. Edit `.env`
+by hand when a value changes, then `docker compose up -d` to apply it.
+`RTT_TOKEN` must be the long *issued refresh token* from
+https://api-portal.rtt.io/, not the 36-character token ID.
 
 ## 4. Expose it outside your LAN
 

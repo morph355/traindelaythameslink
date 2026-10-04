@@ -53,13 +53,19 @@ if (agentMailApiKey && inboxId && ownerEmail) {
     `Watching ${inboxId} for journey-check emails from ${ownerEmail} every ${pollSeconds}s.`,
   );
 
+  let polling = false;
   setInterval(() => {
+    if (polling) return; // a slow (rate-limited) check must not stack up behind itself
+    polling = true;
     processJourneyRequests({ agentMail, rtt: client, inboxId, ownerEmail, appUrl })
       .then(({ processed }) => {
         if (processed > 0) console.log(`Replied to ${processed} journey-check email(s).`);
       })
       .catch((err) => {
         console.error("Error while checking for journey-check emails:", err);
+      })
+      .finally(() => {
+        polling = false;
       });
   }, pollSeconds * 1000);
 } else {

@@ -134,4 +134,24 @@ describe("RttClient", () => {
     expect(sleep).toHaveBeenCalledWith(2500);
     expect(dataCalls).toBe(2);
   });
+
+  it("spaces requests so no more than 9 go out per minute", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = fetchMockWithAccessToken("a", jsonResponse({ services: [] }));
+      const client = new RttClient({ token: "t" }, "https://data.rtt.io", fetchMock);
+      const dataCalls = () => fetchMock.mock.calls.filter(([u]) => new URL(u).pathname !== "/api/get_access_token").length;
+
+      const all = Promise.all(
+        Array.from({ length: 10 }, () => client.searchStationToStation("BTN", "GTW", new Date(2026, 8, 23), "0639")),
+      );
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(dataCalls()).toBe(9);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await all;
+      expect(dataCalls()).toBe(10);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

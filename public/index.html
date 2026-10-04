@@ -64,6 +64,13 @@
 
     <h2 style="margin-top:1rem">Outbound (morning)</h2>
     <div class="row" id="outbound-presets"></div>
+    <div class="row">
+      <div>
+        <label>Departure time</label>
+        <input type="time" id="outbound-time" />
+      </div>
+      <button type="button" class="primary" id="check-outbound">Check outbound journey</button>
+    </div>
 
     <h2>Return (afternoon/evening)</h2>
     <p class="muted">Your return varies, so pick the time you actually left.</p>
@@ -138,8 +145,27 @@
   });
   setDate(new Date());
 
+  document.getElementById("check-outbound").addEventListener("click", () => {
+    const time = document.getElementById("outbound-time").value;
+    if (!time) {
+      alert("Enter the time you left.");
+      return;
+    }
+    runCommuteCheck("outbound", time.replace(":", ""));
+  });
+
   async function loadCommuteConfig() {
+    try {
+      await loadCommuteConfigUnsafe();
+    } catch (err) {
+      document.getElementById("outbound-presets").innerHTML =
+        `<p class="muted">Couldn't load your usual times (${err.message}) - enter the time below.</p>`;
+    }
+  }
+
+  async function loadCommuteConfigUnsafe() {
     const res = await fetch("/api/commute");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     commuteConfig = await res.json();
 
     document.getElementById("route-description").textContent =
@@ -152,7 +178,10 @@
       btn.type = "button";
       btn.className = "preset primary";
       btn.textContent = preset.label;
-      btn.addEventListener("click", () => runCommuteCheck("outbound", preset.time));
+      btn.addEventListener("click", () => {
+        document.getElementById("outbound-time").value = `${preset.time.slice(0, 2)}:${preset.time.slice(2)}`;
+        runCommuteCheck("outbound", preset.time);
+      });
       container.appendChild(btn);
     }
   }
@@ -169,7 +198,7 @@
   async function runCommuteCheck(direction, time) {
     const date = document.getElementById("journey-date").value;
     const resultsEl = document.getElementById("commute-results");
-    resultsEl.innerHTML = "<p>Checking...</p>";
+    resultsEl.innerHTML = "<p>Checking... this can take up to a minute or two because of Realtime Trains' rate limit.</p>";
     try {
       const response = await fetch("/api/check-commute", {
         method: "POST",

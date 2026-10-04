@@ -22,6 +22,9 @@ interface AccessTokenResponse {
 /** RTT allows ~10 requests/minute, so a 429 is routine: wait out Retry-After and retry. */
 const MAX_RATE_LIMIT_RETRIES = 2;
 const MAX_RETRY_WAIT_MS = 65_000;
+/** Stay just under RTT's 10/minute limit, shared by every caller of this client (web + email poller). */
+const MAX_REQUESTS_PER_MINUTE = 9;
+const WINDOW_MS = 60_000;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -36,6 +39,8 @@ export class RttApiError extends Error {
 }
 
 export class RttClient {
+  private requestTimes: number[] = [];
+  private slotChain: Promise<void> = Promise.resolve();
   private cachedAccessToken: { token: string; expiresAtMs: number } | undefined;
 
   constructor(
@@ -71,6 +76,25 @@ export class RttClient {
     return data.token;
   }
 
+  /** Waits (in call order) until a request can be made without exceeding the per-minute limit. */
+  private async acquireSlot(): Promise<void> {
+    const previous = this.slotChain;
+    let release!: () => void;
+    this.slotChain = new Promise<void>((resolve) => (release = resolve));
+    await previous;
+    try {
+      for (;;) {
+        const now = Date.now();
+        this.requestTimes = this.requestTimes.filter((t) => now - t < WINDOW_MS);
+        if (this.requestTimes.length < MAX_REQUESTS_PER_MINUTE) break;
+        await this.sleep(this.requestTimes[0] + WINDOW_MS - now + 250);
+      }
+      this.requestTimes.push(Date.now());
+    } finally {
+      release();
+    }
+  }
+
   private async get<T>(path: string, params: Record<string, string | undefined>): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
     for (const [key, value] of Object.entries(params)) {
@@ -78,6 +102,7 @@ export class RttClient {
     }
 
     const accessToken = await this.getAccessToken();
+    await this.acquireSlot();
     let response = await this.fetchImpl(url.toString(), {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -88,6 +113,7 @@ export class RttClient {
         MAX_RETRY_WAIT_MS,
       );
       await this.sleep(waitMs);
+      await this.acquireSlot();
       response = await this.fetchImpl(url.toString(), {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
