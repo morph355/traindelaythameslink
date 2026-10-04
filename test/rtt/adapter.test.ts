@@ -29,14 +29,25 @@ function searchItem(overrides: Partial<RttLocationLineUpItem> = {}): RttLocation
 
 describe("toLondonHHmm", () => {
   it("converts a UTC datetime during BST to correct local HHmm", () => {
-    // 05:39 UTC on 23 Sept 2026 (BST, UTC+1) is 06:39 local - RTT responses
-    // always carry an explicit Z/offset (per the API spec), never a bare
-    // local-time string like requests do.
+    // 05:39 UTC on 23 Sept 2026 (BST, UTC+1) is 06:39 local. (The live API
+    // actually sends offset-less local times - see the next tests - but an
+    // explicit Z/offset must still convert correctly.)
     expect(toLondonHHmm("2026-09-23T05:39:00Z")).toBe("0639");
   });
 
   it("converts a UTC datetime during GMT (winter) to correct local HHmm", () => {
     expect(toLondonHHmm("2026-01-15T06:39:00Z")).toBe("0639");
+  });
+
+  it("reads the live API's offset-less datetimes as UK local time, with no BST shift", () => {
+    // Real data.rtt.io responses look like this: already local, no Z or offset.
+    expect(toLondonHHmm("2026-10-03T06:58:00")).toBe("0658");
+    expect(toLondonHHmm("2026-01-15T06:58:00")).toBe("0658");
+  });
+
+  it("converts datetimes with an explicit offset to UK local time", () => {
+    expect(toLondonHHmm("2026-09-23T06:39:00+01:00")).toBe("0639");
+    expect(toLondonHHmm("2026-09-23T06:39:00+00:00")).toBe("0739");
   });
 
   it("returns undefined for an undefined input", () => {
