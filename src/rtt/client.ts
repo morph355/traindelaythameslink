@@ -28,6 +28,24 @@ const WINDOW_MS = 60_000;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+const MAX_ACTIVITY_ENTRIES = 40;
+
+export interface RttActivityEntry {
+  /** epoch ms */
+  at: number;
+  message: string;
+}
+
+export interface RttStatus {
+  requestsLastMinute: number;
+  limitPerMinute: number;
+  /** epoch ms until which requests are paused (throttle or RTT 429), if currently waiting */
+  pausedUntil?: number;
+  /** Most recent x-ratelimit-remaining-* values RTT reported. */
+  rateLimitRemaining: { minute?: number; hour?: number; day?: number };
+  recent: RttActivityEntry[];
+}
+
 export class RttApiError extends Error {
   constructor(
     message: string,
@@ -40,6 +58,9 @@ export class RttApiError extends Error {
 
 export class RttClient {
   private requestTimes: number[] = [];
+  private activity: RttActivityEntry[] = [];
+  private pausedUntil: number | undefined;
+  private rateLimitRemaining: RttStatus["rateLimitRemaining"] = {};
   private slotChain: Promise<void> = Promise.resolve();
   private cachedAccessToken: { token: string; expiresAtMs: number } | undefined;
 
@@ -59,9 +80,11 @@ export class RttClient {
       return this.cachedAccessToken.token;
     }
 
+    this.log("Exchanging refresh token for an access token");
     const response = await this.fetchImpl(`${this.baseUrl}/api/get_access_token`, {
       headers: { Authorization: `Bearer ${this.credentials.token}` },
     });
+    this.log(`Token exchange -> ${response.status}`);
     if (!response.ok) {
       const body = await response.text().catch(() => "");
       throw new RttApiError(
@@ -76,6 +99,42 @@ export class RttClient {
     return data.token;
   }
 
+  /** What the client has been doing lately, for display on the page. */
+  getStatus(): RttStatus {
+    const now = Date.now();
+    return {
+      requestsLastMinute: this.requestTimes.filter((t) => now - t < WINDOW_MS).length,
+      limitPerMinute: MAX_REQUESTS_PER_MINUTE,
+      pausedUntil: this.pausedUntil && this.pausedUntil > now ? this.pausedUntil : undefined,
+      rateLimitRemaining: { ...this.rateLimitRemaining },
+      recent: [...this.activity],
+    };
+  }
+
+  private log(message: string): void {
+    this.activity.push({ at: Date.now(), message });
+    if (this.activity.length > MAX_ACTIVITY_ENTRIES) this.activity.shift();
+  }
+
+  private async pause(ms: number, reason: string): Promise<void> {
+    this.pausedUntil = Date.now() + ms;
+    this.log(`${reason} - waiting ${Math.ceil(ms / 1000)}s`);
+    await this.sleep(ms);
+    this.pausedUntil = undefined;
+  }
+
+  private recordRateLimit(response: Response): void {
+    const read = (name: string) => {
+      const value = Number(response.headers?.get(name));
+      return response.headers?.get(name) == null || !Number.isFinite(value) ? undefined : value;
+    };
+    this.rateLimitRemaining = {
+      minute: read("x-ratelimit-remaining-minute"),
+      hour: read("x-ratelimit-remaining-hour"),
+      day: read("x-ratelimit-remaining-day"),
+    };
+  }
+
   /** Waits (in call order) until a request can be made without exceeding the per-minute limit. */
   private async acquireSlot(): Promise<void> {
     const previous = this.slotChain;
@@ -87,7 +146,10 @@ export class RttClient {
         const now = Date.now();
         this.requestTimes = this.requestTimes.filter((t) => now - t < WINDOW_MS);
         if (this.requestTimes.length < MAX_REQUESTS_PER_MINUTE) break;
-        await this.sleep(this.requestTimes[0] + WINDOW_MS - now + 250);
+        await this.pause(
+          this.requestTimes[0] + WINDOW_MS - now + 250,
+          `Pacing: ${this.requestTimes.length} requests in the last minute (limit ${MAX_REQUESTS_PER_MINUTE})`,
+        );
       }
       this.requestTimes.push(Date.now());
     } finally {
@@ -102,21 +164,32 @@ export class RttClient {
     }
 
     const accessToken = await this.getAccessToken();
-    await this.acquireSlot();
-    let response = await this.fetchImpl(url.toString(), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    for (let attempt = 0; response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES; attempt++) {
-      const retryAfterSeconds = Number(response.headers?.get("retry-after"));
-      const waitMs = Math.min(
-        (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds : 15) * 1000 + 500,
-        MAX_RETRY_WAIT_MS,
-      );
-      await this.sleep(waitMs);
+    const label = `${path} ${url.searchParams.get("code") ?? url.searchParams.get("identity") ?? ""}`.trim();
+    const send = async (): Promise<Response> => {
       await this.acquireSlot();
-      response = await this.fetchImpl(url.toString(), {
+      this.log(`Requesting ${label}`);
+      const res = await this.fetchImpl(url.toString(), {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      this.recordRateLimit(res);
+      this.log(`${label} -> ${res.status}`);
+      return res;
+    };
+    let response = await send();
+    for (let attempt = 0; response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES; attempt++) {
+      const retryAfterSeconds = Number(response.headers?.get("retry-after"));
+      const waitMs = (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds : 15) * 1000 + 500;
+      if (waitMs > MAX_RETRY_WAIT_MS) {
+        // Hourly/daily allowance exhausted: waiting here would just hang the request.
+        this.log(
+          `RTT rate limit exhausted (remaining: ${this.rateLimitRemaining.minute ?? "?"}/min, ` +
+            `${this.rateLimitRemaining.hour ?? "?"}/hour, ${this.rateLimitRemaining.day ?? "?"}/day) - ` +
+            `resets in about ${Math.ceil(retryAfterSeconds / 60)} min, not retrying`,
+        );
+        break;
+      }
+      await this.pause(waitMs, `RTT says rate limit exceeded (retry ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES})`);
+      response = await send();
     }
     if (!response.ok) {
       // RTT's error responses carry a body (usually JSON) explaining *why* -

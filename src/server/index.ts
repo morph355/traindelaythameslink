@@ -54,15 +54,20 @@ if (agentMailApiKey && inboxId && ownerEmail) {
   );
 
   let polling = false;
+  let pausedUntil = 0;
+  // After a failed poll (e.g. RTT rate limit), back off so retrying the same
+  // email every minute doesn't burn the hourly request allowance.
+  const ERROR_BACKOFF_MS = 10 * 60 * 1000;
   setInterval(() => {
-    if (polling) return; // a slow (rate-limited) check must not stack up behind itself
+    if (polling || Date.now() < pausedUntil) return; // a slow (rate-limited) check must not stack up behind itself
     polling = true;
     processJourneyRequests({ agentMail, rtt: client, inboxId, ownerEmail, appUrl })
       .then(({ processed }) => {
         if (processed > 0) console.log(`Replied to ${processed} journey-check email(s).`);
       })
       .catch((err) => {
-        console.error("Error while checking for journey-check emails:", err);
+        console.error("Error while checking for journey-check emails (pausing 10 minutes):", err);
+        pausedUntil = Date.now() + ERROR_BACKOFF_MS;
       })
       .finally(() => {
         polling = false;
