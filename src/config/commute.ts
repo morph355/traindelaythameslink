@@ -37,6 +37,7 @@ export function buildCommuteJourneySpec(
   direction: CommuteDirection,
   date: Date,
   bookedDepartureTime: string,
+  tookDepartureTime?: string,
 ): SplitJourneySpec {
   const outbound = direction === "outbound";
   return {
@@ -45,6 +46,7 @@ export function buildCommuteJourneySpec(
     toCrs: outbound ? COMMUTE.toCrs : COMMUTE.fromCrs,
     date,
     bookedDepartureTime,
+    tookDepartureTime,
     ticketLabels: outbound
       ? { leg1: COMMUTE.ticketLabels.outboundLeg1, leg2: COMMUTE.ticketLabels.outboundLeg2 }
       : { leg1: COMMUTE.ticketLabels.returnLeg1, leg2: COMMUTE.ticketLabels.returnLeg2 },

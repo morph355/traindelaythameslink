@@ -106,3 +106,20 @@ describe("composeReplyText for a cancelled leg", () => {
   });
 });
 
+describe("composeReplyText when the booked train was replaced", () => {
+  it("names both the booked service and the train taken", () => {
+    const replaced: LegResult = {
+      leg: leg({ fromCrs: "GTW", toCrs: "BTN" }),
+      taken: taken({ serviceUid: "W45483", replacesServiceUid: "W45563", scheduledArrival: "2113", actualArrival: "2129" }),
+      delayMinutes: 16,
+      compensation: { eligible: true, label: "15-29 minutes", percentOfFare: 25 },
+      alternatives: { checkedCount: 1, fasterAlternativeFound: false, lines: [] },
+    };
+
+    const text = composeReplyText([{ direction: "return", legs: [notEligibleLeg(), replaced] }]);
+
+    expect(text).toContain("Booked service W45563 was cancelled/terminated early; you took W45483");
+    expect(text).toContain("actual arrival 2129 - 16 min late");
+  });
+});
+

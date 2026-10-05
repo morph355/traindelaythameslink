@@ -1,5 +1,5 @@
 import { evaluateLeg } from "../engine/delayRepay.js";
-import type { Leg, LegResult } from "../engine/types.js";
+import type { Leg, LegResult, ServicePerformance } from "../engine/types.js";
 import {
   findAlternativeCandidates,
   findClosestService,
@@ -8,6 +8,7 @@ import {
 } from "./adapter.js";
 import { MAX_ALTERNATIVES_CHECKED, NoMatchingServiceError } from "./checkLeg.js";
 import type { RttClient } from "./client.js";
+import type { RttServiceDetailResponse } from "./types.js";
 
 export interface SplitJourneySpec {
   fromCrs: string;
@@ -16,6 +17,13 @@ export interface SplitJourneySpec {
   date: Date;
   /** Booked departure time from `fromCrs`, HHmm. */
   bookedDepartureTime: string;
+  /**
+   * Departure time from `fromCrs` (HHmm) of the train actually arrived on, if
+   * the booked one was cancelled or terminated early. Delay is then measured
+   * from the booked service's scheduled arrival to this train's actual arrival,
+   * for each ticket whose destination the booked service didn't reach.
+   */
+  tookDepartureTime?: string;
   ticketLabels?: { leg1?: string; leg2?: string };
 }
 
@@ -68,8 +76,17 @@ export async function checkSplitJourney(
     ticketLabel: spec.ticketLabels?.leg2,
   };
 
-  const leg1Taken = toServicePerformance(takenDetail, spec.viaCrs);
-  const leg2Taken = toServicePerformance(takenDetail, spec.toCrs);
+  let tookDetail: RttServiceDetailResponse | undefined;
+  if (spec.tookDepartureTime && spec.tookDepartureTime !== spec.bookedDepartureTime) {
+    const tookMatched = findClosestService(search, spec.tookDepartureTime);
+    if (!tookMatched) throw new NoMatchingServiceError({ ...wholeJourneyLeg, bookedDepartureTime: spec.tookDepartureTime });
+    if (tookMatched.scheduleMetadata.uniqueIdentity !== matched.scheduleMetadata.uniqueIdentity) {
+      tookDetail = await client.getService(tookMatched.scheduleMetadata.identity, spec.date);
+    }
+  }
+
+  const leg1Taken = performanceFor(takenDetail, tookDetail, spec.viaCrs);
+  const leg2Taken = performanceFor(takenDetail, tookDetail, spec.toCrs);
 
   const excludeUid = matched.scheduleMetadata.uniqueIdentity;
   const [leg1Alternatives, leg2Alternatives] = await Promise.all([
@@ -81,6 +98,27 @@ export async function checkSplitJourney(
     evaluateLeg(leg1, leg1Taken, leg1Alternatives),
     evaluateLeg(leg2, leg2Taken, leg2Alternatives),
   ];
+}
+
+/**
+ * How the passenger's journey went at `crs`: on the booked service where it
+ * actually got there, otherwise on the train they say they took instead
+ * (measured against the booked service's scheduled arrival).
+ */
+function performanceFor(
+  booked: RttServiceDetailResponse,
+  took: RttServiceDetailResponse | undefined,
+  crs: string,
+): ServicePerformance {
+  const bookedPerf = toServicePerformance(booked, crs);
+  if (!took || (!bookedPerf.cancelled && bookedPerf.actualArrival)) return bookedPerf;
+
+  const tookPerf = toServicePerformance(took, crs);
+  return {
+    ...tookPerf,
+    scheduledArrival: bookedPerf.scheduledArrival,
+    replacesServiceUid: bookedPerf.serviceUid,
+  };
 }
 
 async function findAlternatives(client: RttClient, leg: Leg, excludeUid: string) {

@@ -26,7 +26,10 @@ function renderDirection(result: DirectionResult): string {
 function renderLeg(leg: LegResult): string {
   const lines = [
     `  ${leg.leg.fromCrs} -> ${leg.leg.toCrs}${leg.leg.ticketLabel ? ` (${leg.leg.ticketLabel})` : ""}`,
-    leg.taken.cancelled
+    leg.taken.replacesServiceUid
+      ? `  Booked service ${leg.taken.replacesServiceUid} was cancelled/terminated early; you took ${leg.taken.serviceUid}. ` +
+        `Due ${leg.taken.scheduledArrival} (booked service), actual arrival ${leg.taken.actualArrival} - ${leg.delayMinutes} min late`
+      : leg.taken.cancelled
       ? `  CANCELLED before ${leg.leg.toCrs} (service ${leg.taken.serviceUid}, scheduled arrival ${leg.taken.scheduledArrival})`
       : `  Scheduled arrival ${leg.taken.scheduledArrival}, actual arrival ${leg.taken.actualArrival} - ${leg.delayMinutes} min late`,
     `  ${leg.compensation.eligible ? "ELIGIBLE" : "Not eligible"} - ${leg.compensation.label}` +
