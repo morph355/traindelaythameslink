@@ -127,3 +127,37 @@ describe("evaluateLeg", () => {
     expect(() => evaluateLeg(leg, taken, [])).toThrow(/missing scheduled or actual arrival/);
   });
 });
+
+describe("evaluateLeg for a cancelled service", () => {
+  const leg: Leg = { fromCrs: "GTW", toCrs: "BTN", date: new Date(2026, 8, 23), bookedDepartureTime: "2035" };
+  const cancelled = perf({
+    serviceUid: "W45563",
+    scheduledArrival: "2113",
+    actualArrival: undefined,
+    arrivalIsActual: false,
+    cancelled: true,
+  });
+
+  it("does not throw, and estimates the delay from the first alternative that ran", () => {
+    const later = perf({ serviceUid: "W45483", scheduledArrival: "2118", actualArrival: "2129" });
+    const result = evaluateLeg(leg, cancelled, [cancelled, later]);
+
+    expect(result.delayMinutes).toBe(16); // 2113 due -> first alternative arrived 2129
+    expect(result.compensation.eligible).toBe(true);
+    expect(result.compensation.percentOfFare).toBe(25);
+    expect(result.compensation.label).toMatch(/Cancelled.*first alternative.*2129/);
+  });
+
+  it("is eligible but unquantified when no alternative arrival is known", () => {
+    const result = evaluateLeg(leg, cancelled, [cancelled]);
+
+    expect(result.compensation.eligible).toBe(true);
+    expect(result.compensation.percentOfFare).toBe(0);
+    expect(result.compensation.label).toMatch(/Cancelled.*no alternative/);
+  });
+
+  it("still throws for a non-cancelled service with no arrival reported yet", () => {
+    const notYet = perf({ actualArrival: undefined, arrivalIsActual: false });
+    expect(() => evaluateLeg(leg, notYet, [])).toThrow(/missing scheduled or actual arrival/);
+  });
+});

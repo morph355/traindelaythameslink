@@ -87,3 +87,22 @@ describe("composeReplyText", () => {
     expect(text.indexOf("OUTBOUND")).toBeLessThan(text.indexOf("RETURN"));
   });
 });
+
+describe("composeReplyText for a cancelled leg", () => {
+  it("says the service was cancelled instead of printing a missing actual arrival", () => {
+    const cancelledLeg: LegResult = {
+      leg: leg({ fromCrs: "GTW", toCrs: "BTN", ticketLabel: "Gatwick Airport to Brighton" }),
+      taken: taken({ serviceUid: "W45563", scheduledArrival: "2113", actualArrival: undefined, arrivalIsActual: false, cancelled: true }),
+      delayMinutes: 16,
+      compensation: { eligible: true, label: "Cancelled - estimated from the first alternative that ran", percentOfFare: 25 },
+      alternatives: { checkedCount: 1, fasterAlternativeFound: false, lines: ["ALT: ..."] },
+    };
+
+    const text = composeReplyText([{ direction: "return", legs: [notEligibleLeg(), cancelledLeg] }]);
+
+    expect(text).toContain("CANCELLED before BTN (service W45563, scheduled arrival 2113)");
+    expect(text).not.toContain("actual arrival undefined");
+    expect(text).toContain("ELIGIBLE - Cancelled");
+  });
+});
+
