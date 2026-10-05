@@ -123,3 +123,47 @@ describe("composeReplyText when the booked train was replaced", () => {
   });
 });
 
+describe("composeReplyText claim details", () => {
+  const ticketA = { ticketNumber: "CPB0TEST001", ticketType: "Anytime Day Return", restriction: "Thameslink Only", priceGbp: 15.9 };
+
+  function delayedLeg(overrides: Partial<ServicePerformance> = {}): LegResult {
+    return {
+      leg: leg({ fromCrs: "BTN", toCrs: "GTW", ticketLabel: "Brighton to Gatwick Airport" }),
+      taken: taken({ scheduledArrival: "0735", actualArrival: "0750", legScheduledDeparture: "0656", legActualDeparture: "0656", ...overrides }),
+      delayMinutes: 15,
+      compensation: { eligible: true, label: "15-29 minutes", percentOfFare: 25 },
+      alternatives: { checkedCount: 1, fasterAlternativeFound: false, lines: [] },
+    };
+  }
+
+  it("shows date, booked and actual departure, ticket number/type/full price and the RTT reason", () => {
+    const text = composeReplyText(
+      [{ direction: "outbound", legs: [delayedLeg({ delayReason: "train fault - a problem with the brakes" }), notEligibleLeg()] }],
+      undefined,
+      { "BTN-GTW": ticketA },
+    );
+
+    expect(text).toContain("Date: Wed 23 Sep 2026");
+    expect(text).toContain("Booked departure 0656 from BTN, actually left 0656");
+    expect(text).toContain("Ticket: Anytime Day Return (Thameslink Only), ticket number CPB0TEST001, price £15.90");
+    expect(text).toContain("Reason for delay: train fault - a problem with the brakes");
+    expect(text).not.toContain("order");
+  });
+
+  it("says when RTT published no reason, and when no ticket was found in the PDFs", () => {
+    const text = composeReplyText([{ direction: "outbound", legs: [delayedLeg(), notEligibleLeg()] }]);
+
+    expect(text).toContain("Reason for delay: none published by Realtime Trains for this train");
+    expect(text).toContain("Ticket: not found in the attached PDFs");
+  });
+
+  it("leaves out ticket and reason lines for a leg that isn't eligible", () => {
+    const text = composeReplyText([{ direction: "outbound", legs: [notEligibleLeg(), notEligibleLeg()] }], undefined, {
+      "GTW-LBG": ticketA,
+    });
+
+    expect(text).not.toContain("Ticket:");
+    expect(text).not.toContain("Reason for delay");
+  });
+});
+

@@ -5,14 +5,17 @@ import { checkSplitJourney } from "../rtt/checkSplitJourney.js";
 import type { RttClient } from "../rtt/client.js";
 import {
   addLabel,
+  downloadAttachment,
   getMessageText,
   listUnprocessedRequestEmails,
   replyToMessage,
   type RequestEmail,
 } from "./agentmailClient.js";
 import { FORMAT_HELP, JourneyRequestParseError, parseJourneyRequest } from "./journeyRequest.js";
-import { composeReplyText, type DirectionResult } from "./replyComposer.js";
-import { findCommuteTimesFromAttachments } from "./trainpal.js";
+import { composeReplyText, type DirectionResult, type TicketsByLeg } from "./replyComposer.js";
+import { extractPdfText } from "./pdfText.js";
+import { parseTicketText } from "./ticketDetails.js";
+import { findCommuteTimesFromAttachments, parseTicketFilename } from "./trainpal.js";
 
 export const PROCESSED_LABEL = "checked";
 
@@ -130,7 +133,8 @@ async function handleOne(options: ProcessJourneyRequestsOptions, candidate: Requ
     throw err;
   }
 
-  const replyText = composeReplyText(results, appUrl);
+  const tickets = await loadTickets(options, messageId, pdfAttachments, receivedAt.getFullYear());
+  const replyText = composeReplyText(results, appUrl, tickets);
   await replyToMessage(agentMail, inboxId, messageId, replyText);
   await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
 }
@@ -145,4 +149,31 @@ async function checkDirection(
   const spec = buildCommuteJourneySpec(direction, date, time, took);
   const legs = await checkSplitJourney(rtt, spec);
   return { direction, legs };
+}
+
+/**
+ * Ticket number/type/price for each leg, read from the attached PDFs. The leg
+ * a PDF belongs to comes from its filename (reliable station names); the
+ * details from its text. Best-effort: a PDF that can't be downloaded or read
+ * is skipped with a warning rather than blocking the reply.
+ */
+async function loadTickets(
+  options: ProcessJourneyRequestsOptions,
+  messageId: string,
+  attachments: RequestEmail["pdfAttachments"],
+  yearHint: number,
+): Promise<TicketsByLeg> {
+  const tickets: TicketsByLeg = {};
+  for (const attachment of attachments) {
+    const leg = attachment.filename ? parseTicketFilename(attachment.filename, yearHint) : null;
+    if (!leg?.fromCrs || !leg.toCrs) continue; // e.g. the E-receipt
+    try {
+      const pdf = await downloadAttachment(options.agentMail, options.inboxId, messageId, attachment.attachmentId);
+      const details = parseTicketText(await extractPdfText(pdf));
+      if (details) tickets[`${leg.fromCrs}-${leg.toCrs}`] = details;
+    } catch (err) {
+      console.warn(`Couldn't read ticket details from ${attachment.filename}:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return tickets;
 }

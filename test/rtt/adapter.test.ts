@@ -113,6 +113,34 @@ describe("toServicePerformance", () => {
     expect(toServicePerformance(service, "GTW").cancelled).toBe(true);
   });
 
+  it("reads the leg's own departure and the published delay reason", () => {
+    const service: RttServiceDetailResponse = {
+      service: {
+        scheduleMetadata: { uniqueIdentity: "gb-nr:W1:2026-09-23", namespace: "gb-nr", identity: "W1", departureDate: "2026-09-23" },
+        reasons: [{ type: "CANCEL", code: "MN", shortText: "train fault", longText: "a problem with the brakes" }],
+        locations: [
+          { location: { shortCodes: ["BTN"] }, temporalData: { departure: { scheduleAdvertised: "2026-09-23T06:56:00", realtimeActual: "2026-09-23T06:56:00" } } },
+          {
+            location: { shortCodes: ["GTW"] },
+            temporalData: {
+              arrival: { scheduleAdvertised: "2026-09-23T07:35:00", realtimeActual: "2026-09-23T07:50:00" },
+              departure: { scheduleAdvertised: "2026-09-23T07:36:00", realtimeActual: "2026-09-23T07:51:00" },
+            },
+          },
+          { location: { shortCodes: ["LBG"] }, temporalData: { arrival: { scheduleAdvertised: "2026-09-23T08:05:00", realtimeActual: "2026-09-23T08:39:00" } } },
+        ],
+      },
+    };
+
+    const leg2 = toServicePerformance(service, "LBG", "GTW");
+    expect(leg2.legScheduledDeparture).toBe("0736");
+    expect(leg2.legActualDeparture).toBe("0751");
+    expect(leg2.delayReason).toBe("train fault - a problem with the brakes");
+
+    expect(toServicePerformance(service, "LBG").legScheduledDeparture).toBeUndefined();
+    expect(toServicePerformance({ service: { ...service.service!, reasons: undefined } }, "LBG").delayReason).toBeUndefined();
+  });
+
   it("throws when the response has no service data", () => {
     expect(() => toServicePerformance({}, "GTW")).toThrow(/no `service` data/);
   });

@@ -51,9 +51,18 @@ export interface RttServiceLocationEntry {
   location?: RttGeographicLocation;
 }
 
+export interface RttServiceReason {
+  type?: string;
+  code?: string;
+  shortText?: string;
+  longText?: string;
+}
+
 export interface RttServiceDetailResponse {
   service?: {
     scheduleMetadata: RttScheduleMetadata;
     locations: RttServiceLocationEntry[];
+    /** Why the service was delayed/cancelled, when RTT has one (often absent). */
+    reasons?: RttServiceReason[];
   };
 }
