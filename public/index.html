@@ -287,7 +287,11 @@
     return `
       <div class="leg-result ${cls}">
         <h3 style="margin-top:0">${r.leg.fromCrs} &rarr; ${r.leg.toCrs}${r.leg.ticketLabel ? ` (${r.leg.ticketLabel})` : ""}</h3>
-        <p>Service ${r.taken.serviceUid}: scheduled arrival ${r.taken.scheduledArrival}, actual arrival ${r.taken.actualArrival} &mdash; <strong>${r.delayMinutes} min late</strong></p>
+        ${r.taken.replacesServiceUid
+          ? `<p>Booked service ${r.taken.replacesServiceUid} was cancelled/terminated early; you took ${r.taken.serviceUid}: due ${r.taken.scheduledArrival} (booked service), actual arrival ${r.taken.actualArrival} &mdash; <strong>${r.delayMinutes} min late</strong></p>`
+          : r.taken.cancelled
+          ? `<p>Service ${r.taken.serviceUid}: <strong>cancelled before ${r.leg.toCrs}</strong> (scheduled arrival ${r.taken.scheduledArrival}).</p>`
+          : `<p>Service ${r.taken.serviceUid}: scheduled arrival ${r.taken.scheduledArrival}, actual arrival ${r.taken.actualArrival} &mdash; <strong>${r.delayMinutes} min late</strong></p>`}
         <p><strong>${r.compensation.eligible ? "Eligible" : "Not eligible"}</strong> &mdash; ${r.compensation.label}${r.compensation.eligible ? ` (${r.compensation.percentOfFare}% of this ticket's fare)` : ""}</p>
         ${altNote}
         ${evidence}
@@ -301,8 +305,8 @@
       `${r.leg.fromCrs} to ${r.leg.toCrs}${r.leg.ticketLabel ? ` (${r.leg.ticketLabel})` : ""}`,
       `Service: ${r.taken.serviceUid}`,
       `Scheduled arrival: ${r.taken.scheduledArrival}`,
-      `Actual arrival: ${r.taken.actualArrival}`,
-      `Delay: ${r.delayMinutes} minutes`,
+      r.taken.cancelled ? "Service was cancelled before reaching the destination" : `Actual arrival: ${r.taken.actualArrival}`,
+      r.taken.cancelled ? `Estimated delay: ${r.delayMinutes} minutes (based on the first alternative that ran)` : `Delay: ${r.delayMinutes} minutes`,
       `${r.compensation.eligible ? "Eligible" : "Not eligible"} — ${r.compensation.label}`,
     ].join("\n");
   }

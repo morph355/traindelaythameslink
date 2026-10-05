@@ -97,6 +97,7 @@ export function evaluateLeg(
   taken: ServicePerformance,
   alternatives: ServicePerformance[],
 ): LegResult {
+  if (taken.cancelled) return evaluateCancelledLeg(leg, taken, alternatives);
   if (!taken.scheduledArrival || !taken.actualArrival) {
     throw new Error(
       `Cannot evaluate leg ${leg.fromCrs}->${leg.toCrs}: missing scheduled or actual arrival time`,
@@ -109,5 +110,52 @@ export function evaluateLeg(
     delayMinutes: delay,
     compensation: compensationTier(delay),
     alternatives: summarizeAlternatives(taken, alternatives),
+  };
+}
+
+/**
+ * A cancelled call has no actual arrival, so the delay can't come from the
+ * service itself. Delay Repay for a cancellation is based on how late the
+ * passenger actually reached the destination, which depends on whichever train
+ * they took instead - unknown here. The earliest alternative that really ran
+ * gives the *minimum* delay they could have had, so use that, and say so.
+ */
+function evaluateCancelledLeg(
+  leg: Leg,
+  taken: ServicePerformance,
+  alternatives: ServicePerformance[],
+): LegResult {
+  const summary = summarizeAlternatives(taken, alternatives);
+  const firstArrival = summary.bestAlternativeArrival;
+
+  if (!taken.scheduledArrival || !firstArrival) {
+    return {
+      leg,
+      taken,
+      delayMinutes: 0,
+      compensation: {
+        eligible: true,
+        label:
+          "Cancelled - no alternative arrival times found to estimate the delay; claim using the arrival time of the train you actually took",
+        percentOfFare: 0,
+      },
+      alternatives: summary,
+    };
+  }
+
+  const delay = delayMinutes(taken.scheduledArrival, firstArrival);
+  const tier = compensationTier(delay);
+  return {
+    leg,
+    taken,
+    delayMinutes: delay,
+    compensation: {
+      eligible: tier.eligible,
+      label:
+        `Cancelled - estimated from the first alternative that ran (arrived ${firstArrival}, ${delay} min after the cancelled service was due); ` +
+        `your actual delay depends on the train you took. ${tier.label}`,
+      percentOfFare: tier.percentOfFare,
+    },
+    alternatives: summary,
   };
 }

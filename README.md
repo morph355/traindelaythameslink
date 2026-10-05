@@ -71,6 +71,24 @@ leg, ready to copy straight into the claim form - no need to open the app
 at all, though the reply links back to it (`APP_URL`) in case you want to
 check something else.
 
+**If your train was cancelled** (or stopped short) and you carried on with a
+later one, add a `took:` line with the time that later train left your
+starting station:
+
+```
+back: 20:05
+took: 20:15
+```
+
+For each ticket, the app uses your booked train's real arrival where it got
+that far, and the train you took where it didn't, and measures the delay
+against the *booked* train's scheduled arrival - which is how Delay Repay
+works. A bare `took:` applies to whichever of `out:`/`back:` you gave; if you
+gave both, write `out took: 06:56` / `back took: 18:30` instead (a bare
+`took:` is ignored then, as it would be ambiguous). Without a `took:` line, a
+cancelled leg is estimated from the first alternative train that actually
+ran, and the reply says so.
+
 You can also just **forward your TrainPal booking confirmation** to the
 same address, with or without the `out:`/`back:` lines on top - the app
 reads the booked times off the attached ticket PDFs (specifically their

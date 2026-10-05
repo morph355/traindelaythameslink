@@ -47,6 +47,8 @@ interface ResolvedRequest {
   date: Date;
   outboundTime?: string;
   returnTime?: string;
+  outboundTook?: string;
+  returnTook?: string;
 }
 
 export function resolveRequest(body: string, receivedAt: Date, pdfFilenames: string[]): ResolvedRequest | undefined {
@@ -73,7 +75,13 @@ export function resolveRequest(body: string, receivedAt: Date, pdfFilenames: str
     : pdfTimes?.date
       ? parseIsoDate(pdfTimes.date)
       : (textRequest?.date ?? startOfDay(receivedAt));
-  return { date, outboundTime, returnTime };
+  return {
+    date,
+    outboundTime,
+    returnTime,
+    ...(textRequest?.outboundTook && { outboundTook: textRequest.outboundTook }),
+    ...(textRequest?.returnTook && { returnTook: textRequest.returnTook }),
+  };
 }
 
 /** yyyy-mm-dd as a local-midnight Date (not UTC, so server timezone can't shift the day). */
@@ -103,10 +111,10 @@ async function handleOne(options: ProcessJourneyRequestsOptions, candidate: Requ
   const results: DirectionResult[] = [];
   try {
     if (request.outboundTime) {
-      results.push(await checkDirection(rtt, "outbound", request.date, request.outboundTime));
+      results.push(await checkDirection(rtt, "outbound", request.date, request.outboundTime, request.outboundTook));
     }
     if (request.returnTime) {
-      results.push(await checkDirection(rtt, "return", request.date, request.returnTime));
+      results.push(await checkDirection(rtt, "return", request.date, request.returnTime, request.returnTook));
     }
   } catch (err) {
     if (err instanceof NoMatchingServiceError) {
@@ -132,8 +140,9 @@ async function checkDirection(
   direction: CommuteDirection,
   date: Date,
   time: string,
+  took?: string,
 ): Promise<DirectionResult> {
-  const spec = buildCommuteJourneySpec(direction, date, time);
+  const spec = buildCommuteJourneySpec(direction, date, time, took);
   const legs = await checkSplitJourney(rtt, spec);
   return { direction, legs };
 }

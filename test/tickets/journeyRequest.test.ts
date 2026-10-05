@@ -63,3 +63,37 @@ describe("parseJourneyRequest", () => {
     expect(() => parseJourneyRequest("Hello, just checking in.", RECEIVED)).toThrow(JourneyRequestParseError);
   });
 });
+
+describe("parseJourneyRequest 'took' lines", () => {
+  it("applies a bare 'took:' to the only direction given", () => {
+    const back = parseJourneyRequest("back: 20:05\ntook: 20:15", RECEIVED);
+    expect(back.returnTime).toBe("2005");
+    expect(back.returnTook).toBe("2015");
+    expect(back.outboundTook).toBeUndefined();
+
+    const out = parseJourneyRequest("out: 06:39\ntook 06:56", RECEIVED);
+    expect(out.outboundTook).toBe("0656");
+    expect(out.returnTook).toBeUndefined();
+  });
+
+  it("supports direction-specific 'took' lines when both out and back are given", () => {
+    const req = parseJourneyRequest("out: 06:39\nback: 20:05\nback took: 20:15\nout took 0656", RECEIVED);
+    expect(req.outboundTime).toBe("0639");
+    expect(req.returnTime).toBe("2005");
+    expect(req.outboundTook).toBe("0656");
+    expect(req.returnTook).toBe("2015");
+  });
+
+  it("ignores an ambiguous bare 'took:' when both out and back are given", () => {
+    const req = parseJourneyRequest("out: 06:39\nback: 20:05\ntook: 20:15", RECEIVED);
+    expect(req.outboundTook).toBeUndefined();
+    expect(req.returnTook).toBeUndefined();
+  });
+
+  it("does not let 'took' lines disturb the out/back times", () => {
+    const req = parseJourneyRequest("back took: 20:15\nback: 20:05", RECEIVED);
+    expect(req.returnTime).toBe("2005");
+    expect(req.returnTook).toBe("2015");
+  });
+});
+

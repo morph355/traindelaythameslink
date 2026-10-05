@@ -21,6 +21,12 @@ export interface ServicePerformance {
   /** Whether `actualArrival` is a confirmed actual (vs a live estimate). */
   arrivalIsActual: boolean;
   cancelled: boolean;
+  /**
+   * Set when this is the train the passenger actually arrived on instead of
+   * their booked one: the booked service's uid. `scheduledArrival` is still
+   * the booked service's, since that's what Delay Repay measures against.
+   */
+  replacesServiceUid?: string;
 }
 
 export interface CompensationTier {

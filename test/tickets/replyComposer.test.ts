@@ -87,3 +87,39 @@ describe("composeReplyText", () => {
     expect(text.indexOf("OUTBOUND")).toBeLessThan(text.indexOf("RETURN"));
   });
 });
+
+describe("composeReplyText for a cancelled leg", () => {
+  it("says the service was cancelled instead of printing a missing actual arrival", () => {
+    const cancelledLeg: LegResult = {
+      leg: leg({ fromCrs: "GTW", toCrs: "BTN", ticketLabel: "Gatwick Airport to Brighton" }),
+      taken: taken({ serviceUid: "W45563", scheduledArrival: "2113", actualArrival: undefined, arrivalIsActual: false, cancelled: true }),
+      delayMinutes: 16,
+      compensation: { eligible: true, label: "Cancelled - estimated from the first alternative that ran", percentOfFare: 25 },
+      alternatives: { checkedCount: 1, fasterAlternativeFound: false, lines: ["ALT: ..."] },
+    };
+
+    const text = composeReplyText([{ direction: "return", legs: [notEligibleLeg(), cancelledLeg] }]);
+
+    expect(text).toContain("CANCELLED before BTN (service W45563, scheduled arrival 2113)");
+    expect(text).not.toContain("actual arrival undefined");
+    expect(text).toContain("ELIGIBLE - Cancelled");
+  });
+});
+
+describe("composeReplyText when the booked train was replaced", () => {
+  it("names both the booked service and the train taken", () => {
+    const replaced: LegResult = {
+      leg: leg({ fromCrs: "GTW", toCrs: "BTN" }),
+      taken: taken({ serviceUid: "W45483", replacesServiceUid: "W45563", scheduledArrival: "2113", actualArrival: "2129" }),
+      delayMinutes: 16,
+      compensation: { eligible: true, label: "15-29 minutes", percentOfFare: 25 },
+      alternatives: { checkedCount: 1, fasterAlternativeFound: false, lines: [] },
+    };
+
+    const text = composeReplyText([{ direction: "return", legs: [notEligibleLeg(), replaced] }]);
+
+    expect(text).toContain("Booked service W45563 was cancelled/terminated early; you took W45483");
+    expect(text).toContain("actual arrival 2129 - 16 min late");
+  });
+});
+
