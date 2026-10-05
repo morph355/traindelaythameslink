@@ -11,6 +11,8 @@
  */
 export interface JourneyRequest {
   date: Date;
+  /** True only if the email had an explicit "date:" line; otherwise `date` is just the day it was sent. */
+  dateSpecified: boolean;
   outboundTime?: string;
   returnTime?: string;
 }
@@ -60,6 +62,7 @@ export function parseJourneyRequest(body: string, receivedAt: Date): JourneyRequ
 
   return {
     date: resolveDate(dateMatch?.[1], receivedAt),
+    dateSpecified: dateMatch !== null,
     outboundTime: outMatch ? normalizeTime(outMatch[1]) : undefined,
     returnTime: backMatch ? normalizeTime(backMatch[1]) : undefined,
   };

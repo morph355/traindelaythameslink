@@ -49,7 +49,7 @@ interface ResolvedRequest {
   returnTime?: string;
 }
 
-function resolveRequest(body: string, receivedAt: Date, pdfFilenames: string[]): ResolvedRequest | undefined {
+export function resolveRequest(body: string, receivedAt: Date, pdfFilenames: string[]): ResolvedRequest | undefined {
   let textRequest;
   try {
     textRequest = parseJourneyRequest(body, receivedAt);
@@ -65,8 +65,21 @@ function resolveRequest(body: string, receivedAt: Date, pdfFilenames: string[]):
   const returnTime = textRequest?.returnTime ?? pdfTimes?.returnTime;
   if (!outboundTime && !returnTime) return undefined;
 
-  const date = textRequest?.date ?? (pdfTimes?.date ? new Date(pdfTimes.date) : startOfDay(receivedAt));
+  // An explicit "date:" line wins; then the date on the forwarded booking's PDFs
+  // (a forwarded old booking must not be checked against the day it was sent);
+  // finally the day the email was sent.
+  const date = textRequest?.dateSpecified
+    ? textRequest.date
+    : pdfTimes?.date
+      ? parseIsoDate(pdfTimes.date)
+      : (textRequest?.date ?? startOfDay(receivedAt));
   return { date, outboundTime, returnTime };
+}
+
+/** yyyy-mm-dd as a local-midnight Date (not UTC, so server timezone can't shift the day). */
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function startOfDay(date: Date): Date {
