@@ -49,6 +49,19 @@ export interface RttClientOptions {
   cacheFile?: string;
 }
 
+/**
+ * A search starting exactly at the booked minute can miss the very train being
+ * looked for: observed on 2026-09-23, W45606 (scheduled and actual 06:56) was
+ * absent from a search with timeFrom=06:56 but present from 06:55, while the
+ * 20:05 service that day was returned by a search from exactly 20:05. So the
+ * start isn't a simple inclusive bound on the scheduled time (likely it is
+ * compared with real-time departure, so a train a few seconds early drops
+ * out). Searches therefore start a few minutes early and run correspondingly
+ * longer; callers pick the closest departure themselves.
+ */
+const SEARCH_LEAD_MINUTES = 10;
+const SEARCH_WINDOW_MINUTES = 180;
+
 const MAX_ACTIVITY_ENTRIES = 40;
 
 export interface RttActivityEntry {
@@ -266,7 +279,7 @@ export class RttClient {
 
   /**
    * Passenger services departing `fromCrs` and subsequently calling at `toCrs`,
-   * from `time` (HHmm, local UK clock time) for a 3-hour window.
+   * from shortly before `time` (HHmm, local UK clock time) for a 3-hour window.
    */
   async searchStationToStation(
     fromCrs: string,
@@ -277,8 +290,8 @@ export class RttClient {
     return this.get<RttLocationSearchResponse>("/gb-nr/location", {
       code: fromCrs,
       filterTo: toCrs,
-      timeFrom: isoLocalDateTime(date, time),
-      timeWindow: "180",
+      timeFrom: isoLocalDateTime(date, searchStart(time)),
+      timeWindow: String(SEARCH_WINDOW_MINUTES + SEARCH_LEAD_MINUTES),
     });
   }
 
@@ -299,6 +312,12 @@ function requestDate(url: URL): string | undefined {
 function cacheTtlMs(url: URL): number {
   const date = requestDate(url);
   return date !== undefined && date < isoDate(new Date()) ? CACHE_TTL_PAST_MS : CACHE_TTL_CURRENT_MS;
+}
+
+/** `time` (HHmm) minus the search lead, floored at 00:00 so it stays on the same date. */
+function searchStart(time: string): string {
+  const minutes = Math.max(0, Number(time.slice(0, 2)) * 60 + Number(time.slice(2, 4)) - SEARCH_LEAD_MINUTES);
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}${String(minutes % 60).padStart(2, "0")}`;
 }
 
 function isoDate(date: Date): string {

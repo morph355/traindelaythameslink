@@ -44,8 +44,9 @@ describe("RttClient", () => {
     expect(new URL(url).pathname).toBe("/gb-nr/location");
     expect(new URL(url).searchParams.get("code")).toBe("BTN");
     expect(new URL(url).searchParams.get("filterTo")).toBe("GTW");
-    expect(new URL(url).searchParams.get("timeFrom")).toBe("2026-09-23T06:39:00");
-    expect(new URL(url).searchParams.get("timeWindow")).toBe("180");
+    // Starts 10 minutes early (a search from the exact booked minute can miss that train), and runs 10 minutes longer.
+    expect(new URL(url).searchParams.get("timeFrom")).toBe("2026-09-23T06:29:00");
+    expect(new URL(url).searchParams.get("timeWindow")).toBe("190");
     expect(init.headers.Authorization).toBe("Bearer access-tok-456");
   });
 
@@ -258,5 +259,20 @@ describe("RttClient", () => {
         rmSync(dir, { recursive: true, force: true });
       }
     });
+  });
+
+  it("starts the search before the booked time so a train departing exactly then is not missed", async () => {
+    const fetchMock = fetchMockWithAccessToken("a", jsonResponse({ services: [] }));
+    const client = new RttClient({ token: "t" }, "https://data.rtt.io", fetchMock);
+    const fromOf = async (time: string) => {
+      fetchMock.mockClear();
+      await client.searchStationToStation("BTN", "LBG", new Date(2026, 8, 23, 12), time);
+      const dataCall = fetchMock.mock.calls.find(([u]) => new URL(u).pathname === "/gb-nr/location")!;
+      return new URL(dataCall[0]).searchParams.get("timeFrom");
+    };
+
+    expect(await fromOf("0656")).toBe("2026-09-23T06:46:00");
+    expect(await fromOf("0700")).toBe("2026-09-23T06:50:00");
+    expect(await fromOf("0005")).toBe("2026-09-23T00:00:00"); // floored, stays on the same date
   });
 });
