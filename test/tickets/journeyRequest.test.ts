@@ -43,6 +43,12 @@ describe("parseJourneyRequest", () => {
     expect(req.date).toEqual(new Date(2026, 8, 23));
   });
 
+  it("reports whether the date was given explicitly", () => {
+    expect(parseJourneyRequest("out: 06:39", RECEIVED).dateSpecified).toBe(false);
+    expect(parseJourneyRequest("date: 2026-09-20\nout: 06:39", RECEIVED).dateSpecified).toBe(true);
+    expect(parseJourneyRequest("date: today\nout: 06:39", RECEIVED).dateSpecified).toBe(true);
+  });
+
   it("resolves an explicit date", () => {
     const req = parseJourneyRequest("date: 2026-09-20\nout: 06:39", RECEIVED);
     expect(req.date).toEqual(new Date(2026, 8, 20));
