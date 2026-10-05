@@ -40,22 +40,43 @@ function renderTicket(ticket: TicketDetails): string {
   return `  Ticket: ${type || "type not found"}, ticket number ${ticket.ticketNumber}, price £${ticket.priceGbp.toFixed(2)}`;
 }
 
+/** "0735" -> "07:35". */
+function clock(hhmm: string | undefined, fallback: string): string {
+  return hhmm && /^\d{4}$/.test(hhmm) ? `${hhmm.slice(0, 2)}:${hhmm.slice(2)}` : fallback;
+}
+
+/** The four times a claim needs, for every leg: scheduled and actual departure, scheduled and actual arrival. */
+function renderTimes(leg: LegResult): string[] {
+  const { taken } = leg;
+  const departure =
+    `  Scheduled departure: ${clock(taken.legScheduledDeparture, "not available")}` +
+    `   Actual departure: ${clock(taken.legActualDeparture, "not recorded")}`;
+  const scheduledArrival = `  Scheduled arrival: ${clock(taken.scheduledArrival, "not available")}`;
+
+  if (taken.replacesServiceUid) {
+    return [
+      departure,
+      `${scheduledArrival}   Actual arrival: ${clock(taken.actualArrival, "not recorded")} - ${leg.delayMinutes} min late`,
+      `  (Booked service ${taken.replacesServiceUid} was cancelled/terminated early; the arrival is on ${taken.serviceUid}, which you took.)`,
+    ];
+  }
+  if (taken.cancelled) {
+    return [
+      departure,
+      `${scheduledArrival}   Actual arrival: none - service ${taken.serviceUid} was cancelled before ${leg.leg.toCrs}`,
+    ];
+  }
+  return [
+    departure,
+    `${scheduledArrival}   Actual arrival: ${clock(taken.actualArrival, "not recorded")} - ${leg.delayMinutes} min late`,
+  ];
+}
+
 function renderLeg(leg: LegResult, ticket?: TicketDetails): string {
   const lines = [
     `  ${leg.leg.fromCrs} -> ${leg.leg.toCrs}${leg.leg.ticketLabel ? ` (${leg.leg.ticketLabel})` : ""}`,
     `  Date: ${formatDate(leg.leg.date)}`,
-    ...(leg.taken.legScheduledDeparture
-      ? [
-          `  Booked departure ${leg.taken.legScheduledDeparture} from ${leg.leg.fromCrs}` +
-            (leg.taken.legActualDeparture ? `, actually left ${leg.taken.legActualDeparture}` : ""),
-        ]
-      : []),
-    leg.taken.replacesServiceUid
-      ? `  Booked service ${leg.taken.replacesServiceUid} was cancelled/terminated early; you took ${leg.taken.serviceUid}. ` +
-        `Due ${leg.taken.scheduledArrival} (booked service), actual arrival ${leg.taken.actualArrival} - ${leg.delayMinutes} min late`
-      : leg.taken.cancelled
-      ? `  CANCELLED before ${leg.leg.toCrs} (service ${leg.taken.serviceUid}, scheduled arrival ${leg.taken.scheduledArrival})`
-      : `  Scheduled arrival ${leg.taken.scheduledArrival}, actual arrival ${leg.taken.actualArrival} - ${leg.delayMinutes} min late`,
+    ...renderTimes(leg),
     `  ${leg.compensation.eligible ? "ELIGIBLE" : "Not eligible"} - ${leg.compensation.label}` +
       (leg.compensation.eligible ? ` (${leg.compensation.percentOfFare}% of this ticket's fare)` : ""),
   ];

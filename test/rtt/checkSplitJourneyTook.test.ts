@@ -24,7 +24,7 @@ const t = (hhmm: string) => `${D}T${hhmm}:00`;
 
 function service(
   identity: string,
-  stops: Array<{ crs: string; arr?: [string, string?]; dep?: string; cancelled?: boolean }>,
+  stops: Array<{ crs: string; arr?: [string, string?]; dep?: string; depActual?: string; cancelled?: boolean }>,
 ): RttServiceDetailResponse {
   return {
     service: {
@@ -39,7 +39,7 @@ function service(
               ...(s.cancelled && { isCancelled: true }),
             },
           }),
-          ...(s.dep && { departure: { scheduleAdvertised: t(s.dep) } }),
+          ...(s.dep && { departure: { scheduleAdvertised: t(s.dep), ...(s.depActual && { realtimeActual: t(s.depActual) }) } }),
         },
       })),
     },
@@ -48,7 +48,7 @@ function service(
 
 const booked = service("W45563", [
   { crs: "LBG", dep: "20:05" },
-  { crs: "GTW", arr: ["20:34", "20:37"], dep: "20:35" },
+  { crs: "GTW", arr: ["20:34", "20:37"], dep: "20:35", depActual: "20:38" },
   { crs: "BTN", arr: ["21:13"], cancelled: true },
 ]);
 const tookTrain = service("W45483", [
@@ -93,6 +93,9 @@ describe("checkSplitJourney with a cancelled booked service", () => {
     expect(leg2.taken.actualArrival).toBe("2129");
     expect(leg2.taken.cancelled).toBe(false);
     expect(leg2.delayMinutes).toBe(16);
+    // The booked train did leave Gatwick (before being cancelled later), and that's the departure that counts.
+    expect(leg2.taken.legScheduledDeparture).toBe("2035");
+    expect(leg2.taken.legActualDeparture).toBe("2038");
     expect(leg2.compensation).toMatchObject({ eligible: true, percentOfFare: 25 });
   });
 

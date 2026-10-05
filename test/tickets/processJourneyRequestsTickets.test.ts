@@ -99,7 +99,8 @@ describe("processJourneyRequests with ticket PDFs", () => {
 
     const [, , { text }] = reply.mock.calls[0];
     expect(text).toContain("Date: Wed 23 Sep 2026");
-    expect(text).toContain("Booked departure 0736 from GTW, actually left 0751");
+    expect(text).toContain("Scheduled departure: 07:36   Actual departure: 07:51");
+    expect(text).toContain("Scheduled arrival: 08:05   Actual arrival: 08:39 - 34 min late");
     expect(text).toContain("Ticket: Anytime Day Return (Thameslink Only), ticket number CPB0TEST001, price £15.90");
     expect(text).toContain("Ticket: Anytime Return (Not Underground), ticket number CPB0TEST002, price £26.90");
     expect(text).toContain("Reason for delay: signalling problem - a fault with the signalling system");

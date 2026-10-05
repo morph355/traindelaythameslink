@@ -118,9 +118,10 @@ function performanceFor(
   return {
     ...tookPerf,
     scheduledArrival: bookedPerf.scheduledArrival,
-    // The booked departure; the train taken didn't leave from this leg's start on the passenger's journey.
+    // The passenger was on the booked train from this leg's start (it only fell short later), so its
+    // departure is the one that counts, not the departure of the train taken afterwards.
     legScheduledDeparture: bookedPerf.legScheduledDeparture,
-    legActualDeparture: undefined,
+    legActualDeparture: bookedPerf.legActualDeparture,
     delayReason: bookedPerf.delayReason ?? tookPerf.delayReason,
     replacesServiceUid: bookedPerf.serviceUid,
   };
