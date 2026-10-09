@@ -26,7 +26,7 @@ export async function checkLeg(client: RttClient, leg: Leg): Promise<LegResult> 
   if (!matched) throw new NoMatchingServiceError(leg);
 
   const takenDetail = await client.getService(matched.scheduleMetadata.identity, leg.date);
-  const taken = toServicePerformance(takenDetail, leg.toCrs);
+  const taken = toServicePerformance(takenDetail, leg.toCrs, leg.fromCrs);
 
   const excludeUid = matched.scheduleMetadata.uniqueIdentity;
   const candidates = findAlternativeCandidates(search, leg.bookedDepartureTime, excludeUid).slice(

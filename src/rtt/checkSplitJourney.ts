@@ -85,8 +85,8 @@ export async function checkSplitJourney(
     }
   }
 
-  const leg1Taken = performanceFor(takenDetail, tookDetail, spec.viaCrs);
-  const leg2Taken = performanceFor(takenDetail, tookDetail, spec.toCrs);
+  const leg1Taken = performanceFor(takenDetail, tookDetail, spec.viaCrs, spec.fromCrs);
+  const leg2Taken = performanceFor(takenDetail, tookDetail, spec.toCrs, spec.viaCrs);
 
   const excludeUid = matched.scheduleMetadata.uniqueIdentity;
   const [leg1Alternatives, leg2Alternatives] = await Promise.all([
@@ -109,14 +109,20 @@ function performanceFor(
   booked: RttServiceDetailResponse,
   took: RttServiceDetailResponse | undefined,
   crs: string,
+  legOriginCrs: string,
 ): ServicePerformance {
-  const bookedPerf = toServicePerformance(booked, crs);
+  const bookedPerf = toServicePerformance(booked, crs, legOriginCrs);
   if (!took || (!bookedPerf.cancelled && bookedPerf.actualArrival)) return bookedPerf;
 
-  const tookPerf = toServicePerformance(took, crs);
+  const tookPerf = toServicePerformance(took, crs, legOriginCrs);
   return {
     ...tookPerf,
     scheduledArrival: bookedPerf.scheduledArrival,
+    // The passenger was on the booked train from this leg's start (it only fell short later), so its
+    // departure is the one that counts, not the departure of the train taken afterwards.
+    legScheduledDeparture: bookedPerf.legScheduledDeparture,
+    legActualDeparture: bookedPerf.legActualDeparture,
+    delayReason: bookedPerf.delayReason ?? tookPerf.delayReason,
     replacesServiceUid: bookedPerf.serviceUid,
   };
 }

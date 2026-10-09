@@ -89,6 +89,16 @@ gave both, write `out took: 06:56` / `back took: 18:30` instead (a bare
 cancelled leg is estimated from the first alternative train that actually
 ran, and the reply says so.
 
+**Claim details in the reply.** For each leg that's eligible, the reply gives
+what the Delay Repay form asks for: the date, booked and actual departure,
+due and actual arrival, the ticket type, ticket number and **full ticket
+price** (read from the attached TrainPal ticket PDFs - forward the booking
+email so they're attached), and the reason for the delay. The reason comes
+from Realtime Trains when it publishes one (typically for cancellations);
+otherwise the reply says none was published and you'll need to supply one.
+A return ticket has one PDF per direction with the same ticket number and the
+whole return price. The order number is deliberately left out.
+
 You can also just **forward your TrainPal booking confirmation** to the
 same address, with or without the `out:`/`back:` lines on top - the app
 reads the booked times off the attached ticket PDFs (specifically their

@@ -21,6 +21,11 @@ export interface ServicePerformance {
   /** Whether `actualArrival` is a confirmed actual (vs a live estimate). */
   arrivalIsActual: boolean;
   cancelled: boolean;
+  /** Booked and actual departure (HHmm) at the start of this leg, not the service's origin. */
+  legScheduledDeparture?: string;
+  legActualDeparture?: string;
+  /** Delay/cancellation reason published by RTT, e.g. "train fault - a problem with the brakes". */
+  delayReason?: string;
   /**
    * Set when this is the train the passenger actually arrived on instead of
    * their booked one: the booked service's uid. `scheduledArrival` is still

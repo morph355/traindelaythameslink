@@ -4,6 +4,7 @@ import type {
   RttLocationLineUpItem,
   RttLocationSearchResponse,
   RttServiceDetailResponse,
+  RttServiceReason,
 } from "./types.js";
 
 const HAS_TIMEZONE = /(Z|[+-]\d{2}:?\d{2})$/i;
@@ -39,6 +40,8 @@ export function toLondonHHmm(iso: string | undefined): string | undefined {
 export function toServicePerformance(
   service: RttServiceDetailResponse,
   destinationCrs: string,
+  /** Where this leg starts, for the departure time shown on a claim (defaults to nothing). */
+  legOriginCrs?: string,
 ): ServicePerformance {
   const detail = service.service;
   if (!detail) {
@@ -50,6 +53,10 @@ export function toServicePerformance(
     (loc.location?.shortCodes ?? []).includes(destinationCrs),
   );
   const arrival = destination?.temporalData?.arrival;
+  const legOrigin = legOriginCrs
+    ? detail.locations.find((loc) => (loc.location?.shortCodes ?? []).includes(legOriginCrs))
+    : undefined;
+  const legDeparture = legOrigin?.temporalData?.departure;
 
   return {
     serviceUid: detail.scheduleMetadata.uniqueIdentity,
@@ -59,7 +66,18 @@ export function toServicePerformance(
     actualArrival: toLondonHHmm(arrival?.realtimeActual),
     arrivalIsActual: Boolean(arrival?.realtimeActual) && !arrival?.realtimeNoReport,
     cancelled: Boolean(arrival?.isCancelled),
+    legScheduledDeparture: toLondonHHmm(legDeparture?.scheduleAdvertised),
+    legActualDeparture: toLondonHHmm(legDeparture?.realtimeActual),
+    delayReason: describeReasons(detail.reasons),
   };
+}
+
+/** "train fault - a problem with the brakes", or undefined when RTT published no reason. */
+function describeReasons(reasons: RttServiceReason[] | undefined): string | undefined {
+  const texts = (reasons ?? [])
+    .map((r) => [r.shortText, r.longText].filter(Boolean).join(" - "))
+    .filter((t) => t.length > 0);
+  return texts.length > 0 ? texts.join("; ") : undefined;
 }
 
 /**
