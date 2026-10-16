@@ -118,6 +118,14 @@ describe("parseJourneyRequest 'direct' lines", () => {
     expect(back.outboundDirect).toBeUndefined();
   });
 
+  it("accepts a few natural phrasings on the line, like 'Direct no split'", () => {
+    for (const line of ["Direct no split", "direct ticket", "Direct, no split".replace(",", ""), "DIRECT only"]) {
+      const req = parseJourneyRequest(`Out: 8:39\nBack: 19:15\n\n${line}\n\n---------- Forwarded message ---------`, RECEIVED);
+      expect(req.outboundDirect, line).toBe(true);
+      expect(req.returnDirect, line).toBe(true);
+    }
+  });
+
   it("is off by default and ignores the word inside other text, such as forwarded content", () => {
     expect(parseJourneyRequest("out: 06:54", RECEIVED).outboundDirect).toBeUndefined();
 
