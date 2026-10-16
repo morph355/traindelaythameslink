@@ -1,3 +1,4 @@
+import type { Leg } from "../engine/types.js";
 import type { SplitJourneySpec } from "../rtt/checkSplitJourney.js";
 
 export interface CommutePreset {
@@ -29,8 +30,25 @@ export const COMMUTE = {
     outboundLeg2: "Gatwick Airport to London Bridge",
     returnLeg1: "London Bridge to Gatwick Airport",
     returnLeg2: "Gatwick Airport to Brighton",
+    outboundDirect: "Brighton to London Bridge (direct ticket)",
+    returnDirect: "London Bridge to Brighton (direct ticket)",
   },
 };
+
+/**
+ * One ticket for the whole journey (e.g. a direct off-peak ticket bought instead
+ * of the split-save pair): a single leg from one end of the commute to the other.
+ */
+export function buildDirectLeg(direction: CommuteDirection, date: Date, bookedDepartureTime: string): Leg {
+  const outbound = direction === "outbound";
+  return {
+    fromCrs: outbound ? COMMUTE.fromCrs : COMMUTE.toCrs,
+    toCrs: outbound ? COMMUTE.toCrs : COMMUTE.fromCrs,
+    date,
+    bookedDepartureTime,
+    ticketLabel: outbound ? COMMUTE.ticketLabels.outboundDirect : COMMUTE.ticketLabels.returnDirect,
+  };
+}
 
 /** Builds a `checkSplitJourney` spec for your regular commute in either direction. */
 export function buildCommuteJourneySpec(

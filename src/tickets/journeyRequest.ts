@@ -21,6 +21,9 @@ export interface JourneyRequest {
    */
   outboundTook?: string;
   returnTook?: string;
+  /** One direct ticket for that whole direction instead of the split-save pair. */
+  outboundDirect?: boolean;
+  returnDirect?: boolean;
 }
 
 export class JourneyRequestParseError extends Error {
@@ -38,7 +41,9 @@ export const FORMAT_HELP =
   '(or "date: yesterday") if it wasn\'t today.\n\n' +
   "If your train was cancelled and you caught a later one, add the time that later " +
   'train left your starting station, e.g. "took: 18:30" (or "out took: 06:56" / ' +
-  '"back took: 18:30" if you gave both out and back).';
+  '"back took: 18:30" if you gave both out and back).\n\n' +
+  'If you travelled on a single direct ticket instead of the split-save pair, put "direct" on its ' +
+  'own line (or "out direct" / "back direct").';
 
 const OUT_PATTERN = /\b(?:out|outbound)\b\s*[:\-]?\s*(\d{1,2}[:.]?\d{2})/i;
 const BACK_PATTERN = /\b(?:back|return|inbound)\b\s*[:\-]?\s*(\d{1,2}[:.]?\d{2})/i;
@@ -46,6 +51,11 @@ const TIME = String.raw`(\d{1,2}[:.]?\d{2})`;
 const OUT_TOOK_PATTERN = new RegExp(String.raw`\b(?:out|outbound)\s+took\b\s*[:\-]?\s*${TIME}`, "i");
 const BACK_TOOK_PATTERN = new RegExp(String.raw`\b(?:back|return|inbound)\s+took\b\s*[:\-]?\s*${TIME}`, "i");
 const TOOK_PATTERN = new RegExp(String.raw`\btook\b\s*[:\-]?\s*${TIME}`, "i");
+// "direct" must be on its own line (optionally prefixed by out/back): a stray "direct" in
+// forwarded text (e.g. "direct debit") must not switch a journey to a direct ticket.
+const OUT_DIRECT_PATTERN = /^[ \t>]*(?:out|outbound)\s+direct[ \t]*$/im;
+const BACK_DIRECT_PATTERN = /^[ \t>]*(?:back|return|inbound)\s+direct[ \t]*$/im;
+const BARE_DIRECT_PATTERN = /^[ \t>]*direct[ \t]*$/im;
 const DATE_PATTERN = /\bdate\b\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|today|yesterday)\b/i;
 
 function normalizeTime(raw: string): string {
@@ -83,6 +93,12 @@ export function parseJourneyRequest(body: string, receivedAt: Date): JourneyRequ
   const outTook = OUT_TOOK_PATTERN.exec(body)?.[1];
   const backTook = BACK_TOOK_PATTERN.exec(body)?.[1];
   const bareTook = TOOK_PATTERN.exec(body.replace(OUT_TOOK_PATTERN, "").replace(BACK_TOOK_PATTERN, ""))?.[1];
+  // "direct" says you travelled on one direct ticket for the whole direction instead of the
+  // split-save pair. "out direct" / "back direct" are direction-specific; a bare "direct"
+  // applies to every direction you gave.
+  const bareDirect = BARE_DIRECT_PATTERN.test(body);
+  const outDirect = Boolean(outMatch) && (OUT_DIRECT_PATTERN.test(body) || bareDirect);
+  const backDirect = Boolean(backMatch) && (BACK_DIRECT_PATTERN.test(body) || bareDirect);
   const onlyOut = outMatch && !backMatch;
   const onlyBack = backMatch && !outMatch;
 
@@ -93,5 +109,7 @@ export function parseJourneyRequest(body: string, receivedAt: Date): JourneyRequ
     returnTime: backMatch ? normalizeTime(backMatch[1]) : undefined,
     outboundTook: tookTime(outTook ?? (onlyOut ? bareTook : undefined)),
     returnTook: tookTime(backTook ?? (onlyBack ? bareTook : undefined)),
+    ...(outDirect && { outboundDirect: true }),
+    ...(backDirect && { returnDirect: true }),
   };
 }

@@ -27,3 +27,29 @@ describe("resolveRequest date", () => {
     expect(req?.date).toEqual(new Date(2026, 9, 4));
   });
 });
+
+describe("resolveRequest direct tickets", () => {
+  const DIRECT_PDFS = [
+    "E-receipt.pdf",
+    "passenger_Brighton_to_London Bridge_4_Oct_0756.pdf",
+    "passenger_London Bridge_to_Brighton.pdf",
+  ];
+
+  it("treats a whole-journey ticket in the attachments as direct, without any keyword", () => {
+    const req = resolveRequest("out: 07:56\nback: 20:05", SENT, DIRECT_PDFS);
+    expect(req).toMatchObject({ outboundDirect: true, returnDirect: true, outboundTime: "0756", returnTime: "2005" });
+  });
+
+  it("uses the 'direct' keyword when there are no direct tickets attached", () => {
+    const req = resolveRequest("out: 07:56\ndirect", SENT, PDFS);
+    expect(req).toMatchObject({ outboundDirect: true });
+    expect(req?.returnDirect).toBeUndefined();
+  });
+
+  it("stays split-save with neither", () => {
+    const req = resolveRequest("out: 06:56\nback: 20:05", SENT, PDFS);
+    expect(req?.outboundDirect).toBeUndefined();
+    expect(req?.returnDirect).toBeUndefined();
+  });
+});
+

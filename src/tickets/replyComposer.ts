@@ -3,7 +3,8 @@ import type { TicketDetails } from "./ticketDetails.js";
 
 export interface DirectionResult {
   direction: "outbound" | "return";
-  legs: [LegResult, LegResult];
+  /** Two for a split-save pair, one for a single direct ticket. */
+  legs: LegResult[];
 }
 
 /** Ticket details read from the attached PDFs, keyed by "FROM-TO" CRS pair (e.g. "GTW-BTN"). */

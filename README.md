@@ -99,6 +99,17 @@ otherwise the reply says none was published and you'll need to supply one.
 A return ticket has one PDF per direction with the same ticket number and the
 whole return price. The order number is deliberately left out.
 
+**If you travelled on one direct ticket** instead of the split-save pair (say
+you caught a later off-peak train for the whole Brighton to London Bridge
+journey), the app checks that one journey as a single claim, with the direct
+ticket's own number, type and price. It works that out two ways: forward the
+booking email and a ticket for the whole journey in the attachments (e.g.
+`passenger_Brighton_to_London Bridge_...pdf`) switches it automatically, or
+put `direct` on a line of its own (`out direct` / `back direct` for just one
+direction; a bare `direct` applies to every direction you gave). The word has
+to be on its own line so a stray "direct" in forwarded text can't trigger it.
+`took:` doesn't apply to a direct ticket.
+
 You can also just **forward your TrainPal booking confirmation** to the
 same address, with or without the `out:`/`back:` lines on top - the app
 reads the booked times off the attached ticket PDFs (specifically their

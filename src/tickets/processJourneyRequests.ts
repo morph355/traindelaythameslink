@@ -1,6 +1,6 @@
 import type { AgentMailClient } from "agentmail";
-import { buildCommuteJourneySpec, type CommuteDirection } from "../config/commute.js";
-import { NoMatchingServiceError } from "../rtt/checkLeg.js";
+import { buildCommuteJourneySpec, buildDirectLeg, type CommuteDirection } from "../config/commute.js";
+import { NoMatchingServiceError, checkLeg } from "../rtt/checkLeg.js";
 import { checkSplitJourney } from "../rtt/checkSplitJourney.js";
 import type { RttClient } from "../rtt/client.js";
 import {
@@ -52,6 +52,9 @@ interface ResolvedRequest {
   returnTime?: string;
   outboundTook?: string;
   returnTook?: string;
+  /** One direct ticket for that direction (typed "direct", or a whole-journey ticket in the attachments). */
+  outboundDirect?: boolean;
+  returnDirect?: boolean;
 }
 
 export function resolveRequest(body: string, receivedAt: Date, pdfFilenames: string[]): ResolvedRequest | undefined {
@@ -84,6 +87,8 @@ export function resolveRequest(body: string, receivedAt: Date, pdfFilenames: str
     returnTime,
     ...(textRequest?.outboundTook && { outboundTook: textRequest.outboundTook }),
     ...(textRequest?.returnTook && { returnTook: textRequest.returnTook }),
+    ...((textRequest?.outboundDirect || pdfTimes?.outboundDirect) && { outboundDirect: true }),
+    ...((textRequest?.returnDirect || pdfTimes?.returnDirect) && { returnDirect: true }),
   };
 }
 
@@ -114,10 +119,10 @@ async function handleOne(options: ProcessJourneyRequestsOptions, candidate: Requ
   const results: DirectionResult[] = [];
   try {
     if (request.outboundTime) {
-      results.push(await checkDirection(rtt, "outbound", request.date, request.outboundTime, request.outboundTook));
+      results.push(await checkDirection(rtt, "outbound", request.date, request.outboundTime, request.outboundTook, request.outboundDirect));
     }
     if (request.returnTime) {
-      results.push(await checkDirection(rtt, "return", request.date, request.returnTime, request.returnTook));
+      results.push(await checkDirection(rtt, "return", request.date, request.returnTime, request.returnTook, request.returnDirect));
     }
   } catch (err) {
     if (err instanceof NoMatchingServiceError) {
@@ -145,7 +150,13 @@ async function checkDirection(
   date: Date,
   time: string,
   took?: string,
+  direct?: boolean,
 ): Promise<DirectionResult> {
+  if (direct) {
+    // One ticket for the whole direction: a single leg, no split at the via station. ("took" only
+    // describes replacing a booked train partway through a split pair, so it doesn't apply here.)
+    return { direction, legs: [await checkLeg(rtt, buildDirectLeg(direction, date, time))] };
+  }
   const spec = buildCommuteJourneySpec(direction, date, time, took);
   const legs = await checkSplitJourney(rtt, spec);
   return { direction, legs };
