@@ -110,6 +110,10 @@ direction; a bare `direct` applies to every direction you gave). The word has
 to be on its own line so a stray "direct" in forwarded text can't trigger it.
 `took:` doesn't apply to a direct ticket.
 
+**How old a journey can be.** Realtime Trains only provides about two weeks of
+history on this account (14 days back works, 16 doesn't), so check a journey
+within that time. For an older date the reply says so rather than retrying.
+
 You can also just **forward your TrainPal booking confirmation** to the
 same address, with or without the `out:`/`back:` lines on top - the app
 reads the booked times off the attached ticket PDFs (specifically their

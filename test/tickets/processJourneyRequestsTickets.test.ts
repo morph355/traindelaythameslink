@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentMailClient } from "agentmail";
-import type { RttClient } from "../../src/rtt/client.js";
+import { RttApiError, type RttClient } from "../../src/rtt/client.js";
 import type { RttServiceDetailResponse } from "../../src/rtt/types.js";
 import { processJourneyRequests } from "../../src/tickets/processJourneyRequests.js";
 
@@ -151,6 +151,34 @@ describe("processJourneyRequests with ticket PDFs", () => {
     expect(text).toContain("BTN -> LBG");
     expect(text).not.toContain("BTN -> GTW");
     expect(text).toContain("Ticket: not found in the attached PDFs");
+  });
+
+  it("replies and marks the email handled when RTT refuses a date outside its history, instead of retrying forever", async () => {
+    const { client, reply } = fakeAgentMail({}, { body: "out: 06:56\ndate: 2026-09-01", attachments: [] });
+    const rtt = {
+      searchStationToStation: vi.fn().mockRejectedValue(
+        new RttApiError('RTT API request to /gb-nr/location failed: 400 - {"error":"you are requesting a time period outside your permitted history"}', 400),
+      ),
+      getService: vi.fn(),
+    } as unknown as RttClient;
+
+    const result = await processJourneyRequests({ agentMail: client, rtt, inboxId: "inbox", ownerEmail: OWNER });
+
+    expect(result.processed).toBe(1);
+    const [, , { text }] = reply.mock.calls[0];
+    expect(text).toContain("only provides about two weeks of journey history");
+    expect(text).toContain("Tue Sep 01 2026");
+  });
+
+  it("still throws (to be retried later) for a server-side RTT error", async () => {
+    const { client, reply } = fakeAgentMail({}, { body: "out: 06:56", attachments: [] });
+    const rtt = {
+      searchStationToStation: vi.fn().mockRejectedValue(new RttApiError("RTT API request failed: 503", 503)),
+      getService: vi.fn(),
+    } as unknown as RttClient;
+
+    await expect(processJourneyRequests({ agentMail: client, rtt, inboxId: "inbox", ownerEmail: OWNER })).rejects.toThrow(/503/);
+    expect(reply).not.toHaveBeenCalled();
   });
 });
 

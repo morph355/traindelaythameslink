@@ -2,7 +2,7 @@ import type { AgentMailClient } from "agentmail";
 import { buildCommuteJourneySpec, buildDirectLeg, type CommuteDirection } from "../config/commute.js";
 import { NoMatchingServiceError, checkLeg } from "../rtt/checkLeg.js";
 import { checkSplitJourney } from "../rtt/checkSplitJourney.js";
-import type { RttClient } from "../rtt/client.js";
+import { RttApiError, type RttClient } from "../rtt/client.js";
 import {
   addLabel,
   downloadAttachment,
@@ -135,6 +135,13 @@ async function handleOne(options: ProcessJourneyRequestsOptions, candidate: Requ
       await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
       return;
     }
+    // A 400 means RTT will never accept this request (e.g. a date older than the history it
+    // provides), so retrying every 10 minutes would loop forever without ever replying.
+    if (err instanceof RttApiError && err.status === 400) {
+      await replyToMessage(agentMail, inboxId, messageId, describeRejectedRequest(err, request.date));
+      await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
+      return;
+    }
     throw err;
   }
 
@@ -187,4 +194,14 @@ async function loadTickets(
     }
   }
   return tickets;
+}
+
+function describeRejectedRequest(err: RttApiError, date: Date): string {
+  if (/permitted history/i.test(err.message)) {
+    return (
+      `Realtime Trains only provides about two weeks of journey history on this account, so ${date.toDateString()} ` +
+      "is too old to check here. For a journey that old you'll need your own records (the ticket and your actual arrival time)."
+    );
+  }
+  return `Realtime Trains rejected this request and it can't be retried: ${err.message}`;
 }
