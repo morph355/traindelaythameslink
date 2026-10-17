@@ -44,15 +44,19 @@ export async function processJourneyRequests(options: ProcessJourneyRequestsOpti
   return { processed: candidates.length };
 }
 
+/** What was asked about one direction. */
+interface DirectionInput {
+  time: string;
+  /** Departure time (HHmm) of the train actually arrived on, if the booked one fell short. */
+  took?: string;
+  /** One direct ticket for that direction (typed "direct", or a whole-journey ticket in the attachments). */
+  direct?: boolean;
+}
+
 interface ResolvedRequest {
   date: Date;
-  outboundTime?: string;
-  returnTime?: string;
-  outboundTook?: string;
-  returnTook?: string;
-  /** One direct ticket for that direction (typed "direct", or a whole-journey ticket in the attachments). */
-  outboundDirect?: boolean;
-  returnDirect?: boolean;
+  outbound?: DirectionInput;
+  return?: DirectionInput;
 }
 
 export function resolveRequest(body: string, receivedAt: Date, pdfFilenames: string[]): ResolvedRequest | undefined {
@@ -81,12 +85,20 @@ export function resolveRequest(body: string, receivedAt: Date, pdfFilenames: str
       : (textRequest?.date ?? startOfDay(receivedAt));
   return {
     date,
-    outboundTime,
-    returnTime,
-    ...(textRequest?.outboundTook && { outboundTook: textRequest.outboundTook }),
-    ...(textRequest?.returnTook && { returnTook: textRequest.returnTook }),
-    ...((textRequest?.outboundDirect || pdfTimes?.outboundDirect) && { outboundDirect: true }),
-    ...((textRequest?.returnDirect || pdfTimes?.returnDirect) && { returnDirect: true }),
+    ...(outboundTime && {
+      outbound: {
+        time: outboundTime,
+        ...(textRequest?.outboundTook && { took: textRequest.outboundTook }),
+        ...((textRequest?.outboundDirect || pdfTimes?.outboundDirect) && { direct: true }),
+      },
+    }),
+    ...(returnTime && {
+      return: {
+        time: returnTime,
+        ...(textRequest?.returnTook && { took: textRequest.returnTook }),
+        ...((textRequest?.returnDirect || pdfTimes?.returnDirect) && { direct: true }),
+      },
+    }),
   };
 }
 
@@ -115,19 +127,10 @@ async function handleOne(options: ProcessJourneyRequestsOptions, candidate: Requ
   }
 
   const results: DirectionResult[] = [];
-  const directions = [
-    { direction: "outbound", time: request.outboundTime, took: request.outboundTook, direct: request.outboundDirect },
-    { direction: "return", time: request.returnTime, took: request.returnTook, direct: request.returnDirect },
-  ] as const;
-  for (const { time, ...rest } of directions) {
-    if (!time) continue;
-    // "took" only describes replacing a booked train partway through a split pair, so a direct ticket ignores it.
-    const outcome = await checkCommuteDirection(rtt, {
-      ...rest,
-      date: request.date,
-      time,
-      took: rest.direct ? undefined : rest.took,
-    });
+  for (const direction of ["outbound", "return"] as const) {
+    const asked = request[direction];
+    if (!asked) continue;
+    const outcome = await checkCommuteDirection(rtt, { ...asked, direction, date: request.date });
     // noMatch / rejected can never succeed on a retry, so reply and mark handled rather than
     // looping every poll; a transient RTT failure throws out of here and is retried next tick.
     if (outcome.kind !== "ok") {

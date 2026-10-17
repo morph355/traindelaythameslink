@@ -50,6 +50,8 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
         direction: request.direction,
         date: request.date,
         time: request.bookedDepartureTime,
+        took: request.tookDepartureTime,
+        direct: request.direct,
       });
       if (outcome.kind === "noMatch") return res.status(404).json({ error: outcome.message });
       if (outcome.kind === "rejected") {

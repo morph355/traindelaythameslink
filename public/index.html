@@ -64,6 +64,10 @@
       <button type="button" id="date-today">Today</button>
       <button type="button" id="date-yesterday">Yesterday</button>
     </div>
+    <label style="display:block;margin-top:0.5rem">
+      <input type="checkbox" id="direct-ticket" style="width:auto" />
+      Direct ticket (one ticket for the whole journey, not the split-save pair)
+    </label>
 
     <h2 style="margin-top:1rem">Outbound (morning)</h2>
     <div class="row" id="outbound-presets"></div>
@@ -241,7 +245,7 @@
       const response = await fetch("/api/check-commute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ direction, date, time }),
+        body: JSON.stringify({ direction, date, time, direct: document.getElementById("direct-ticket").checked }),
       });
       const body = await response.json();
       if (!response.ok) {
