@@ -1,5 +1,4 @@
-import type { Leg } from "../engine/types.js";
-import type { SplitJourneySpec } from "../rtt/checkSplitJourney.js";
+import type { JourneySpec } from "../rtt/checkJourney.js";
 
 export interface CommutePreset {
   label: string;
@@ -35,29 +34,26 @@ export const COMMUTE = {
   },
 };
 
-/**
- * One ticket for the whole journey (e.g. a direct off-peak ticket bought instead
- * of the split-save pair): a single leg from one end of the commute to the other.
- */
-export function buildDirectLeg(direction: CommuteDirection, date: Date, bookedDepartureTime: string): Leg {
-  const outbound = direction === "outbound";
-  return {
-    fromCrs: outbound ? COMMUTE.fromCrs : COMMUTE.toCrs,
-    toCrs: outbound ? COMMUTE.toCrs : COMMUTE.fromCrs,
-    date,
-    bookedDepartureTime,
-    ticketLabel: outbound ? COMMUTE.ticketLabels.outboundDirect : COMMUTE.ticketLabels.returnDirect,
-  };
-}
-
-/** Builds a `checkSplitJourney` spec for your regular commute in either direction. */
+/** Builds a `checkJourney` spec for your regular commute in either direction. */
 export function buildCommuteJourneySpec(
   direction: CommuteDirection,
   date: Date,
   bookedDepartureTime: string,
   tookDepartureTime?: string,
-): SplitJourneySpec {
+  /** One ticket for the whole direction instead of the split-save pair. */
+  direct = false,
+): JourneySpec {
   const outbound = direction === "outbound";
+  if (direct) {
+    return {
+      fromCrs: outbound ? COMMUTE.fromCrs : COMMUTE.toCrs,
+      toCrs: outbound ? COMMUTE.toCrs : COMMUTE.fromCrs,
+      date,
+      bookedDepartureTime,
+      tookDepartureTime,
+      ticketLabels: { leg1: outbound ? COMMUTE.ticketLabels.outboundDirect : COMMUTE.ticketLabels.returnDirect },
+    };
+  }
   return {
     fromCrs: outbound ? COMMUTE.fromCrs : COMMUTE.toCrs,
     viaCrs: COMMUTE.viaCrs,

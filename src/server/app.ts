@@ -4,8 +4,7 @@ import { fileURLToPath } from "node:url";
 import { basicAuth } from "./basicAuth.js";
 import { COMMUTE, buildCommuteJourneySpec } from "../config/commute.js";
 import type { RttClient } from "../rtt/client.js";
-import { NoMatchingServiceError, checkLeg } from "../rtt/checkLeg.js";
-import { checkSplitJourney } from "../rtt/checkSplitJourney.js";
+import { NoMatchingServiceError, checkJourney } from "../rtt/checkJourney.js";
 import { parseCommuteRequest, type RawCommuteRequest } from "./parseCommuteRequest.js";
 import { ValidationError, parseLegs, type RawLegInput } from "./parseLegs.js";
 
@@ -48,7 +47,7 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
     const spec = buildCommuteJourneySpec(request.direction, request.date, request.bookedDepartureTime);
 
     try {
-      const results = await checkSplitJourney(client, spec);
+      const results = await checkJourney(client, spec);
       res.json({ results });
     } catch (err) {
       if (err instanceof NoMatchingServiceError) {
@@ -77,7 +76,18 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
     }
 
     try {
-      const results = await Promise.all(legs.map((leg) => checkLeg(client, leg)));
+      const perLeg = await Promise.all(
+        legs.map((leg) =>
+          checkJourney(client, {
+            fromCrs: leg.fromCrs,
+            toCrs: leg.toCrs,
+            date: leg.date,
+            bookedDepartureTime: leg.bookedDepartureTime,
+            ticketLabels: { leg1: leg.ticketLabel },
+          }),
+        ),
+      );
+      const results = perLeg.flat();
       res.json({ results });
     } catch (err) {
       if (err instanceof NoMatchingServiceError) {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkSplitJourney } from "../../src/rtt/checkSplitJourney.js";
+import { checkJourney } from "../../src/rtt/checkJourney.js";
 import type { RttClient } from "../../src/rtt/client.js";
 import type {
   RttLocationLineUpItem,
@@ -76,9 +76,9 @@ const spec = {
   bookedDepartureTime: "2005",
 };
 
-describe("checkSplitJourney with a cancelled booked service", () => {
+describe("checkJourney with a cancelled booked service", () => {
   it("measures the delay of the train you took against the booked service's scheduled arrival", async () => {
-    const [leg1, leg2] = await checkSplitJourney(fakeClient(), { ...spec, tookDepartureTime: "2015" });
+    const [leg1, leg2] = await checkJourney(fakeClient(), { ...spec, tookDepartureTime: "2015" });
 
     // First ticket: the booked train did reach Gatwick (3 min late) - not eligible.
     expect(leg1.taken.serviceUid).toBe(`gb-nr:W45563:${D}`);
@@ -100,7 +100,7 @@ describe("checkSplitJourney with a cancelled booked service", () => {
   });
 
   it("falls back to an estimate from the first alternative when no 'took' time is given", async () => {
-    const [, leg2] = await checkSplitJourney(fakeClient(), spec);
+    const [, leg2] = await checkJourney(fakeClient(), spec);
 
     expect(leg2.taken.cancelled).toBe(true);
     expect(leg2.taken.replacesServiceUid).toBeUndefined();
@@ -108,7 +108,7 @@ describe("checkSplitJourney with a cancelled booked service", () => {
   });
 
   it("ignores a 'took' time that is the same as the booked one", async () => {
-    const [, leg2] = await checkSplitJourney(fakeClient(), { ...spec, tookDepartureTime: "2005" });
+    const [, leg2] = await checkJourney(fakeClient(), { ...spec, tookDepartureTime: "2005" });
     expect(leg2.taken.cancelled).toBe(true);
     expect(leg2.taken.replacesServiceUid).toBeUndefined();
   });

@@ -1,7 +1,6 @@
 import type { AgentMailClient } from "agentmail";
-import { buildCommuteJourneySpec, buildDirectLeg, type CommuteDirection } from "../config/commute.js";
-import { NoMatchingServiceError, checkLeg } from "../rtt/checkLeg.js";
-import { checkSplitJourney } from "../rtt/checkSplitJourney.js";
+import { buildCommuteJourneySpec, type CommuteDirection } from "../config/commute.js";
+import { NoMatchingServiceError, checkJourney } from "../rtt/checkJourney.js";
 import { RttApiError, type RttClient } from "../rtt/client.js";
 import {
   addLabel,
@@ -159,13 +158,9 @@ async function checkDirection(
   took?: string,
   direct?: boolean,
 ): Promise<DirectionResult> {
-  if (direct) {
-    // One ticket for the whole direction: a single leg, no split at the via station. ("took" only
-    // describes replacing a booked train partway through a split pair, so it doesn't apply here.)
-    return { direction, legs: [await checkLeg(rtt, buildDirectLeg(direction, date, time))] };
-  }
-  const spec = buildCommuteJourneySpec(direction, date, time, took);
-  const legs = await checkSplitJourney(rtt, spec);
+  // "took" only describes replacing a booked train partway through a split pair, so a direct ticket ignores it.
+  const spec = buildCommuteJourneySpec(direction, date, time, direct ? undefined : took, direct);
+  const legs = await checkJourney(rtt, spec);
   return { direction, legs };
 }
 
