@@ -14,7 +14,11 @@ const PDFS = [
 describe("resolveRequest date", () => {
   it("uses the booking PDFs' date, not the send date, when the text has times but no date", () => {
     const req = resolveRequest("out: 06:56\nback: 20:05", SENT, PDFS);
-    expect(req).toEqual({ date: new Date(2026, 8, 23), outboundTime: "0656", returnTime: "2005" });
+    expect(req).toEqual({
+      date: new Date(2026, 8, 23),
+      outbound: { time: "0656" },
+      return: { time: "2005" },
+    });
   });
 
   it("lets an explicit date line override the PDFs", () => {
@@ -28,6 +32,13 @@ describe("resolveRequest date", () => {
   });
 });
 
+describe("resolveRequest took", () => {
+  it("keeps the train taken with its direction, including for a direct ticket", () => {
+    const req = resolveRequest("out: 07:56\nout direct\nout took: 08:10", SENT, []);
+    expect(req?.outbound).toMatchObject({ time: "0756", took: "0810", direct: true });
+  });
+});
+
 describe("resolveRequest direct tickets", () => {
   const DIRECT_PDFS = [
     "E-receipt.pdf",
@@ -37,19 +48,22 @@ describe("resolveRequest direct tickets", () => {
 
   it("treats a whole-journey ticket in the attachments as direct, without any keyword", () => {
     const req = resolveRequest("out: 07:56\nback: 20:05", SENT, DIRECT_PDFS);
-    expect(req).toMatchObject({ outboundDirect: true, returnDirect: true, outboundTime: "0756", returnTime: "2005" });
+    expect(req).toMatchObject({
+      outbound: { time: "0756", direct: true },
+      return: { time: "2005", direct: true },
+    });
   });
 
   it("uses the 'direct' keyword when there are no direct tickets attached", () => {
     const req = resolveRequest("out: 07:56\ndirect", SENT, PDFS);
-    expect(req).toMatchObject({ outboundDirect: true });
-    expect(req?.returnDirect).toBeUndefined();
+    expect(req).toMatchObject({ outbound: { time: "0756", direct: true } });
+    expect(req?.return).toBeUndefined();
   });
 
   it("stays split-save with neither", () => {
     const req = resolveRequest("out: 06:56\nback: 20:05", SENT, PDFS);
-    expect(req?.outboundDirect).toBeUndefined();
-    expect(req?.returnDirect).toBeUndefined();
+    expect(req?.outbound?.direct).toBeUndefined();
+    expect(req?.return?.direct).toBeUndefined();
   });
 });
 

@@ -1,11 +1,8 @@
 import type { LegResult } from "../engine/types.js";
+import type { DirectionResult } from "../commute/checkCommuteDirection.js";
 import type { TicketDetails } from "./ticketDetails.js";
 
-export interface DirectionResult {
-  direction: "outbound" | "return";
-  /** Two for a split-save pair, one for a single direct ticket. */
-  legs: LegResult[];
-}
+export type { DirectionResult };
 
 /** Ticket details read from the attached PDFs, keyed by "FROM-TO" CRS pair (e.g. "GTW-BTN"). */
 export type TicketsByLeg = Record<string, TicketDetails>;

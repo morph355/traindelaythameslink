@@ -146,8 +146,10 @@ npm test
 
 - `src/config/commute.ts` — your regular commute (route, split point, preset times)
 - `src/rtt/` — Realtime Trains API client and mapping to domain types
-- `src/rtt/checkLeg.ts` / `checkSplitJourney.ts` — orchestrators: a single
-  independent leg, or two split-ticket legs derived from one through service
+- `src/rtt/checkJourney.ts` — orchestrator: one ticket for the whole way, or
+  two split-ticket legs derived from one through service
+- `src/commute/checkCommuteDirection.ts` — one direction of your commute,
+  returning `ok` / `noMatch` / `rejected` (transient RTT errors throw)
 - `src/engine/` — pure delay/eligibility/alternatives-evidence logic
 - `src/server/` — Express app (static page + `POST /api/check` and
   `POST /api/check-commute` JSON APIs)

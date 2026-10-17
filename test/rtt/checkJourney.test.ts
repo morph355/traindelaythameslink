@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkSplitJourney } from "../../src/rtt/checkSplitJourney.js";
-import { NoMatchingServiceError } from "../../src/rtt/checkLeg.js";
+import { NoMatchingServiceError, checkJourney } from "../../src/rtt/checkJourney.js";
 import type { RttClient } from "../../src/rtt/client.js";
 import type {
   RttLocationLineUpItem,
@@ -114,11 +113,11 @@ function fakeClient(): RttClient {
   return { searchStationToStation, getService } as unknown as RttClient;
 }
 
-describe("checkSplitJourney", () => {
+describe("checkJourney", () => {
   it("derives both ticket legs from a single through service and checks alternatives per leg", async () => {
     const client = fakeClient();
 
-    const [leg1Result, leg2Result] = await checkSplitJourney(client, {
+    const [leg1Result, leg2Result] = await checkJourney(client, {
       fromCrs: "BTN",
       viaCrs: "GTW",
       toCrs: "LBG",
@@ -149,7 +148,7 @@ describe("checkSplitJourney", () => {
     } as unknown as RttClient;
 
     await expect(
-      checkSplitJourney(client, {
+      checkJourney(client, {
         fromCrs: "BTN",
         viaCrs: "GTW",
         toCrs: "LBG",
@@ -176,7 +175,7 @@ describe("checkSplitJourney", () => {
     } as unknown as RttClient;
 
     await expect(
-      checkSplitJourney(client, {
+      checkJourney(client, {
         fromCrs: "BTN",
         viaCrs: "GTW",
         toCrs: "LBG",

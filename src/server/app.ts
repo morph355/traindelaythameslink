@@ -2,10 +2,10 @@ import express, { type Express, type ErrorRequestHandler } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { basicAuth } from "./basicAuth.js";
-import { COMMUTE, buildCommuteJourneySpec } from "../config/commute.js";
+import { checkCommuteDirection } from "../commute/checkCommuteDirection.js";
+import { COMMUTE } from "../config/commute.js";
 import type { RttClient } from "../rtt/client.js";
-import { NoMatchingServiceError, checkLeg } from "../rtt/checkLeg.js";
-import { checkSplitJourney } from "../rtt/checkSplitJourney.js";
+import { NoMatchingServiceError, checkJourney } from "../rtt/checkJourney.js";
 import { parseCommuteRequest, type RawCommuteRequest } from "./parseCommuteRequest.js";
 import { ValidationError, parseLegs, type RawLegInput } from "./parseLegs.js";
 
@@ -45,15 +45,25 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
       return res.status(500).json({ error: "Something went wrong handling that request." });
     }
 
-    const spec = buildCommuteJourneySpec(request.direction, request.date, request.bookedDepartureTime);
-
     try {
-      const results = await checkSplitJourney(client, spec);
-      res.json({ results });
-    } catch (err) {
-      if (err instanceof NoMatchingServiceError) {
-        return res.status(404).json({ error: err.message });
+      const outcome = await checkCommuteDirection(client, {
+        direction: request.direction,
+        date: request.date,
+        time: request.bookedDepartureTime,
+        took: request.tookDepartureTime,
+        direct: request.direct,
+      });
+      if (outcome.kind === "noMatch") return res.status(404).json({ error: outcome.message });
+      if (outcome.kind === "rejected") {
+        return res.status(400).json({
+          error:
+            outcome.reason === "historyLimit"
+              ? "Realtime Trains only provides about two weeks of journey history, so that date is too old to check here."
+              : `Realtime Trains rejected this request: ${outcome.message}`,
+        });
       }
+      res.json({ results: outcome.result.legs });
+    } catch (err) {
       console.error("POST /api/check-commute failed:", err);
       return res.status(502).json({
         error: "Couldn't fetch train data. Try again shortly.",
@@ -77,7 +87,18 @@ export function createApp(client: RttClient, options: CreateAppOptions = {}): Ex
     }
 
     try {
-      const results = await Promise.all(legs.map((leg) => checkLeg(client, leg)));
+      const perLeg = await Promise.all(
+        legs.map((leg) =>
+          checkJourney(client, {
+            fromCrs: leg.fromCrs,
+            toCrs: leg.toCrs,
+            date: leg.date,
+            bookedDepartureTime: leg.bookedDepartureTime,
+            ticketLabels: { leg1: leg.ticketLabel },
+          }),
+        ),
+      );
+      const results = perLeg.flat();
       res.json({ results });
     } catch (err) {
       if (err instanceof NoMatchingServiceError) {

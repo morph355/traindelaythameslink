@@ -32,3 +32,23 @@ describe("parseCommuteRequest", () => {
     }
   });
 });
+
+describe("parseCommuteRequest direct and took", () => {
+  it("accepts a direct ticket and the train actually taken", () => {
+    const req = parseCommuteRequest({ direction: "outbound", date: "2026-09-23", time: "06:39", took: "06:56", direct: true });
+    expect(req.direct).toBe(true);
+    expect(req.tookDepartureTime).toBe("0656");
+  });
+
+  it("leaves both unset by default", () => {
+    const req = parseCommuteRequest({ direction: "outbound", date: "2026-09-23", time: "0639" });
+    expect(req.direct).toBeUndefined();
+    expect(req.tookDepartureTime).toBeUndefined();
+  });
+
+  it("rejects a malformed took time", () => {
+    expect(() => parseCommuteRequest({ direction: "outbound", date: "2026-09-23", time: "0639", took: "late" })).toThrow(
+      ValidationError,
+    );
+  });
+});
