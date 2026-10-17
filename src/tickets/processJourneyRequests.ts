@@ -1,7 +1,6 @@
 import type { AgentMailClient } from "agentmail";
-import { buildCommuteJourneySpec, type CommuteDirection } from "../config/commute.js";
-import { NoMatchingServiceError, checkJourney } from "../rtt/checkJourney.js";
-import { RttApiError, type RttClient } from "../rtt/client.js";
+import { checkCommuteDirection, type DirectionOutcome, type DirectionResult } from "../commute/checkCommuteDirection.js";
+import type { RttClient } from "../rtt/client.js";
 import {
   addLabel,
   downloadAttachment,
@@ -11,7 +10,7 @@ import {
   type RequestEmail,
 } from "./agentmailClient.js";
 import { FORMAT_HELP, JourneyRequestParseError, parseJourneyRequest } from "./journeyRequest.js";
-import { composeReplyText, type DirectionResult, type TicketsByLeg } from "./replyComposer.js";
+import { composeReplyText, type TicketsByLeg } from "./replyComposer.js";
 import { extractPdfText } from "./pdfText.js";
 import { parseTicketText } from "./ticketDetails.js";
 import { findCommuteTimesFromAttachments, parseTicketFilename } from "./trainpal.js";
@@ -116,52 +115,33 @@ async function handleOne(options: ProcessJourneyRequestsOptions, candidate: Requ
   }
 
   const results: DirectionResult[] = [];
-  try {
-    if (request.outboundTime) {
-      results.push(await checkDirection(rtt, "outbound", request.date, request.outboundTime, request.outboundTook, request.outboundDirect));
-    }
-    if (request.returnTime) {
-      results.push(await checkDirection(rtt, "return", request.date, request.returnTime, request.returnTook, request.returnDirect));
-    }
-  } catch (err) {
-    if (err instanceof NoMatchingServiceError) {
-      await replyToMessage(
-        agentMail,
-        inboxId,
-        messageId,
-        `Couldn't find a matching service: ${err.message}\n\nDouble-check the time and try again.`,
-      );
+  const directions = [
+    { direction: "outbound", time: request.outboundTime, took: request.outboundTook, direct: request.outboundDirect },
+    { direction: "return", time: request.returnTime, took: request.returnTook, direct: request.returnDirect },
+  ] as const;
+  for (const { time, ...rest } of directions) {
+    if (!time) continue;
+    // "took" only describes replacing a booked train partway through a split pair, so a direct ticket ignores it.
+    const outcome = await checkCommuteDirection(rtt, {
+      ...rest,
+      date: request.date,
+      time,
+      took: rest.direct ? undefined : rest.took,
+    });
+    // noMatch / rejected can never succeed on a retry, so reply and mark handled rather than
+    // looping every poll; a transient RTT failure throws out of here and is retried next tick.
+    if (outcome.kind !== "ok") {
+      await replyToMessage(agentMail, inboxId, messageId, describeFailure(outcome, request.date));
       await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
       return;
     }
-    // A 400 means RTT will never accept this request (e.g. a date older than the history it
-    // provides), so retrying every 10 minutes would loop forever without ever replying.
-    if (err instanceof RttApiError && err.status === 400) {
-      await replyToMessage(agentMail, inboxId, messageId, describeRejectedRequest(err, request.date));
-      await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
-      return;
-    }
-    throw err;
+    results.push(outcome.result);
   }
 
   const tickets = await loadTickets(options, messageId, pdfAttachments, receivedAt.getFullYear());
   const replyText = composeReplyText(results, appUrl, tickets);
   await replyToMessage(agentMail, inboxId, messageId, replyText);
   await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
-}
-
-async function checkDirection(
-  rtt: RttClient,
-  direction: CommuteDirection,
-  date: Date,
-  time: string,
-  took?: string,
-  direct?: boolean,
-): Promise<DirectionResult> {
-  // "took" only describes replacing a booked train partway through a split pair, so a direct ticket ignores it.
-  const spec = buildCommuteJourneySpec(direction, date, time, direct ? undefined : took, direct);
-  const legs = await checkJourney(rtt, spec);
-  return { direction, legs };
 }
 
 /**
@@ -191,12 +171,15 @@ async function loadTickets(
   return tickets;
 }
 
-function describeRejectedRequest(err: RttApiError, date: Date): string {
-  if (/permitted history/i.test(err.message)) {
+function describeFailure(outcome: Exclude<DirectionOutcome, { kind: "ok" }>, date: Date): string {
+  if (outcome.kind === "noMatch") {
+    return `Couldn't find a matching service: ${outcome.message}\n\nDouble-check the time and try again.`;
+  }
+  if (outcome.reason === "historyLimit") {
     return (
       `Realtime Trains only provides about two weeks of journey history on this account, so ${date.toDateString()} ` +
       "is too old to check here. For a journey that old you'll need your own records (the ticket and your actual arrival time)."
     );
   }
-  return `Realtime Trains rejected this request and it can't be retried: ${err.message}`;
+  return `Realtime Trains rejected this request and it can't be retried: ${outcome.message}`;
 }
