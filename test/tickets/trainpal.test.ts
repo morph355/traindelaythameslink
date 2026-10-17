@@ -84,3 +84,37 @@ describe("findCommuteTimesFromAttachments", () => {
     expect(result).toEqual({ date: undefined, outboundTime: undefined, returnTime: undefined });
   });
 });
+
+describe("findCommuteTimesFromAttachments with a direct ticket", () => {
+  const DIRECT = [
+    "E-receipt.pdf",
+    "passenger_Brighton_to_London Bridge_16_Oct_0756.pdf",
+    "passenger_London Bridge_to_Brighton.pdf",
+  ];
+
+  it("flags both directions as direct and takes the booked time from the outbound filename", () => {
+    expect(findCommuteTimesFromAttachments(DIRECT, 2026)).toEqual({
+      date: "2026-10-16",
+      outboundTime: "0756",
+      returnTime: undefined,
+      outboundDirect: true,
+      returnDirect: true,
+    });
+  });
+
+  it("doesn't flag a split-save booking as direct", () => {
+    const split = findCommuteTimesFromAttachments(
+      [
+        "passenger_Brighton_to_Gatwick Airport_14_Oct_0656.pdf",
+        "passenger_Gatwick Airport_to_London Bridge_14_Oct_0736.pdf",
+        "passenger_Gatwick Airport_to_Brighton.pdf",
+        "passenger_London Bridge_to_Gatwick Airport.pdf",
+      ],
+      2026,
+    );
+    expect(split.outboundDirect).toBeUndefined();
+    expect(split.returnDirect).toBeUndefined();
+    expect(split.outboundTime).toBe("0656");
+  });
+});
+

@@ -1,8 +1,8 @@
 import type { AgentMailClient } from "agentmail";
-import { buildCommuteJourneySpec, type CommuteDirection } from "../config/commute.js";
-import { NoMatchingServiceError } from "../rtt/checkLeg.js";
+import { buildCommuteJourneySpec, buildDirectLeg, type CommuteDirection } from "../config/commute.js";
+import { NoMatchingServiceError, checkLeg } from "../rtt/checkLeg.js";
 import { checkSplitJourney } from "../rtt/checkSplitJourney.js";
-import type { RttClient } from "../rtt/client.js";
+import { RttApiError, type RttClient } from "../rtt/client.js";
 import {
   addLabel,
   downloadAttachment,
@@ -52,6 +52,9 @@ interface ResolvedRequest {
   returnTime?: string;
   outboundTook?: string;
   returnTook?: string;
+  /** One direct ticket for that direction (typed "direct", or a whole-journey ticket in the attachments). */
+  outboundDirect?: boolean;
+  returnDirect?: boolean;
 }
 
 export function resolveRequest(body: string, receivedAt: Date, pdfFilenames: string[]): ResolvedRequest | undefined {
@@ -84,6 +87,8 @@ export function resolveRequest(body: string, receivedAt: Date, pdfFilenames: str
     returnTime,
     ...(textRequest?.outboundTook && { outboundTook: textRequest.outboundTook }),
     ...(textRequest?.returnTook && { returnTook: textRequest.returnTook }),
+    ...((textRequest?.outboundDirect || pdfTimes?.outboundDirect) && { outboundDirect: true }),
+    ...((textRequest?.returnDirect || pdfTimes?.returnDirect) && { returnDirect: true }),
   };
 }
 
@@ -114,10 +119,10 @@ async function handleOne(options: ProcessJourneyRequestsOptions, candidate: Requ
   const results: DirectionResult[] = [];
   try {
     if (request.outboundTime) {
-      results.push(await checkDirection(rtt, "outbound", request.date, request.outboundTime, request.outboundTook));
+      results.push(await checkDirection(rtt, "outbound", request.date, request.outboundTime, request.outboundTook, request.outboundDirect));
     }
     if (request.returnTime) {
-      results.push(await checkDirection(rtt, "return", request.date, request.returnTime, request.returnTook));
+      results.push(await checkDirection(rtt, "return", request.date, request.returnTime, request.returnTook, request.returnDirect));
     }
   } catch (err) {
     if (err instanceof NoMatchingServiceError) {
@@ -127,6 +132,13 @@ async function handleOne(options: ProcessJourneyRequestsOptions, candidate: Requ
         messageId,
         `Couldn't find a matching service: ${err.message}\n\nDouble-check the time and try again.`,
       );
+      await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
+      return;
+    }
+    // A 400 means RTT will never accept this request (e.g. a date older than the history it
+    // provides), so retrying every 10 minutes would loop forever without ever replying.
+    if (err instanceof RttApiError && err.status === 400) {
+      await replyToMessage(agentMail, inboxId, messageId, describeRejectedRequest(err, request.date));
       await addLabel(agentMail, inboxId, messageId, PROCESSED_LABEL);
       return;
     }
@@ -145,7 +157,13 @@ async function checkDirection(
   date: Date,
   time: string,
   took?: string,
+  direct?: boolean,
 ): Promise<DirectionResult> {
+  if (direct) {
+    // One ticket for the whole direction: a single leg, no split at the via station. ("took" only
+    // describes replacing a booked train partway through a split pair, so it doesn't apply here.)
+    return { direction, legs: [await checkLeg(rtt, buildDirectLeg(direction, date, time))] };
+  }
   const spec = buildCommuteJourneySpec(direction, date, time, took);
   const legs = await checkSplitJourney(rtt, spec);
   return { direction, legs };
@@ -176,4 +194,14 @@ async function loadTickets(
     }
   }
   return tickets;
+}
+
+function describeRejectedRequest(err: RttApiError, date: Date): string {
+  if (/permitted history/i.test(err.message)) {
+    return (
+      `Realtime Trains only provides about two weeks of journey history on this account, so ${date.toDateString()} ` +
+      "is too old to check here. For a journey that old you'll need your own records (the ticket and your actual arrival time)."
+    );
+  }
+  return `Realtime Trains rejected this request and it can't be retried: ${err.message}`;
 }

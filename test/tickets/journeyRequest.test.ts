@@ -97,3 +97,49 @@ describe("parseJourneyRequest 'took' lines", () => {
   });
 });
 
+describe("parseJourneyRequest 'direct' lines", () => {
+  it("applies a bare 'direct' line to every direction given", () => {
+    const both = parseJourneyRequest("out: 06:54\nback: 21:05\ndirect", RECEIVED);
+    expect(both.outboundDirect).toBe(true);
+    expect(both.returnDirect).toBe(true);
+
+    const outOnly = parseJourneyRequest("out: 06:54\ndirect", RECEIVED);
+    expect(outOnly.outboundDirect).toBe(true);
+    expect(outOnly.returnDirect).toBeUndefined();
+  });
+
+  it("supports direction-specific lines", () => {
+    const req = parseJourneyRequest("out: 06:54\nback: 21:05\nout direct", RECEIVED);
+    expect(req.outboundDirect).toBe(true);
+    expect(req.returnDirect).toBeUndefined();
+
+    const back = parseJourneyRequest("out: 06:54\nback: 21:05\nback direct", RECEIVED);
+    expect(back.returnDirect).toBe(true);
+    expect(back.outboundDirect).toBeUndefined();
+  });
+
+  it("accepts a few natural phrasings on the line, like 'Direct no split'", () => {
+    for (const line of ["Direct no split", "direct ticket", "Direct, no split".replace(",", ""), "DIRECT only"]) {
+      const req = parseJourneyRequest(`Out: 8:39\nBack: 19:15\n\n${line}\n\n---------- Forwarded message ---------`, RECEIVED);
+      expect(req.outboundDirect, line).toBe(true);
+      expect(req.returnDirect, line).toBe(true);
+    }
+  });
+
+  it("is off by default and ignores the word inside other text, such as forwarded content", () => {
+    expect(parseJourneyRequest("out: 06:54", RECEIVED).outboundDirect).toBeUndefined();
+
+    const forwarded = parseJourneyRequest(
+      "out: 06:54\n\n---------- Forwarded message ---------\nPay by direct debit or take a direct train",
+      RECEIVED,
+    );
+    expect(forwarded.outboundDirect).toBeUndefined();
+  });
+
+  it("doesn't disturb the times", () => {
+    const req = parseJourneyRequest("direct\nout: 06:54\nback: 21:05", RECEIVED);
+    expect(req.outboundTime).toBe("0654");
+    expect(req.returnTime).toBe("2105");
+  });
+});
+

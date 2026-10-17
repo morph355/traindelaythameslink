@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentMailClient } from "agentmail";
-import type { RttClient } from "../../src/rtt/client.js";
+import { RttApiError, type RttClient } from "../../src/rtt/client.js";
 import type { RttServiceDetailResponse } from "../../src/rtt/types.js";
 import { processJourneyRequests } from "../../src/tickets/processJourneyRequests.js";
 
@@ -8,6 +8,7 @@ import { processJourneyRequests } from "../../src/tickets/processJourneyRequests
 const PDF_TEXT: Record<string, string> = {
   "ticket-a": "TICKET TYPE ROUTE\nAnytime Day Return Thameslink Only\nTicket Number CPB0TEST001\nPrice £ 15.90",
   "ticket-b": "TICKET TYPE ROUTE\nAnytime Return Not Underground\nTicket Number CPB0TEST002\nPrice £ 26.90",
+  "ticket-direct": "TICKET TYPE ROUTE\nOff-Peak Day Return Thameslink Only\nTicket Number CPB0TEST003\nPrice £ 19.40",
 };
 vi.mock("../../src/tickets/pdfText.js", () => ({
   extractPdfText: async (buf: Buffer) => PDF_TEXT[buf.toString()] ?? "Expense Receipt\nTotal: £42.80",
@@ -47,7 +48,9 @@ function fakeRtt(): RttClient {
   } as unknown as RttClient;
 }
 
-function fakeAgentMail(attachmentIds: Record<string, string>) {
+type Attachment = { attachmentId: string; filename: string; contentType: string };
+
+function fakeAgentMail(attachmentIds: Record<string, string>, override?: { attachments: Attachment[]; body: string }) {
   const reply = vi.fn().mockResolvedValue({});
   const messages = [
     {
@@ -55,7 +58,7 @@ function fakeAgentMail(attachmentIds: Record<string, string>) {
       from: OWNER,
       timestamp: new Date(2026, 9, 4, 15, 45),
       labels: [],
-      attachments: [
+      attachments: override?.attachments ?? [
         { attachmentId: "e-receipt", filename: "E-receipt.pdf", contentType: "application/pdf" },
         { attachmentId: "ticket-a", filename: "passenger_Brighton_to_Gatwick Airport_23_Sep_0656.pdf", contentType: "application/pdf" },
         { attachmentId: "ticket-b", filename: "passenger_Gatwick Airport_to_London Bridge_23_Sep_0736.pdf", contentType: "application/pdf" },
@@ -68,7 +71,7 @@ function fakeAgentMail(attachmentIds: Record<string, string>) {
     inboxes: {
       messages: {
         list: vi.fn().mockResolvedValue({ count: 1, messages }),
-        get: vi.fn().mockResolvedValue({ text: "out: 06:56" }),
+        get: vi.fn().mockResolvedValue({ text: override?.body ?? "out: 06:56" }),
         getAttachment: vi.fn(async (_i: string, _m: string, attachmentId: string) => ({
           downloadUrl: `https://files.example/${attachmentId}`,
         })),
@@ -106,4 +109,76 @@ describe("processJourneyRequests with ticket PDFs", () => {
     expect(text).toContain("Reason for delay: signalling problem - a fault with the signalling system");
     expect(text).not.toContain("52401949552"); // no order number
   });
+
+  it("checks a direct ticket as one leg, with that ticket's details, instead of the split-save pair", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const id = String(url).split("/").pop()!;
+        return { ok: true, arrayBuffer: async () => new TextEncoder().encode(id).buffer };
+      }),
+    );
+    const pdf = (attachmentId: string, filename: string): Attachment => ({ attachmentId, filename, contentType: "application/pdf" });
+    const { client, reply } = fakeAgentMail(
+      {},
+      {
+        body: "out: 06:56",
+        attachments: [
+          pdf("e-receipt", "E-receipt.pdf"),
+          pdf("ticket-direct", "passenger_Brighton_to_London Bridge_23_Sep_0656.pdf"),
+          pdf("ticket-direct", "passenger_London Bridge_to_Brighton.pdf"),
+        ],
+      },
+    );
+
+    await processJourneyRequests({ agentMail: client, rtt: fakeRtt(), inboxId: "inbox", ownerEmail: OWNER });
+
+    const [, , { text }] = reply.mock.calls[0];
+    expect(text).toContain("BTN -> LBG (Brighton to London Bridge (direct ticket))");
+    expect(text).not.toContain("BTN -> GTW");
+    expect(text).not.toContain("GTW -> LBG");
+    expect(text).toContain("Ticket: Off-Peak Day Return (Thameslink Only), ticket number CPB0TEST003, price £19.40");
+    // The through train reached London Bridge 34 min late in this fixture.
+    expect(text).toContain("Scheduled arrival: 08:05   Actual arrival: 08:39 - 34 min late");
+  });
+
+  it("uses a typed 'direct' line even with no direct ticket attached", async () => {
+    const { client, reply } = fakeAgentMail({}, { body: "out: 06:56\ndirect", attachments: [] });
+
+    await processJourneyRequests({ agentMail: client, rtt: fakeRtt(), inboxId: "inbox", ownerEmail: OWNER });
+
+    const [, , { text }] = reply.mock.calls[0];
+    expect(text).toContain("BTN -> LBG");
+    expect(text).not.toContain("BTN -> GTW");
+    expect(text).toContain("Ticket: not found in the attached PDFs");
+  });
+
+  it("replies and marks the email handled when RTT refuses a date outside its history, instead of retrying forever", async () => {
+    const { client, reply } = fakeAgentMail({}, { body: "out: 06:56\ndate: 2026-09-01", attachments: [] });
+    const rtt = {
+      searchStationToStation: vi.fn().mockRejectedValue(
+        new RttApiError('RTT API request to /gb-nr/location failed: 400 - {"error":"you are requesting a time period outside your permitted history"}', 400),
+      ),
+      getService: vi.fn(),
+    } as unknown as RttClient;
+
+    const result = await processJourneyRequests({ agentMail: client, rtt, inboxId: "inbox", ownerEmail: OWNER });
+
+    expect(result.processed).toBe(1);
+    const [, , { text }] = reply.mock.calls[0];
+    expect(text).toContain("only provides about two weeks of journey history");
+    expect(text).toContain("Tue Sep 01 2026");
+  });
+
+  it("still throws (to be retried later) for a server-side RTT error", async () => {
+    const { client, reply } = fakeAgentMail({}, { body: "out: 06:56", attachments: [] });
+    const rtt = {
+      searchStationToStation: vi.fn().mockRejectedValue(new RttApiError("RTT API request failed: 503", 503)),
+      getService: vi.fn(),
+    } as unknown as RttClient;
+
+    await expect(processJourneyRequests({ agentMail: client, rtt, inboxId: "inbox", ownerEmail: OWNER })).rejects.toThrow(/503/);
+    expect(reply).not.toHaveBeenCalled();
+  });
 });
+

@@ -68,6 +68,12 @@ export interface CommuteTimesFromAttachments {
   date?: string;
   outboundTime?: string;
   returnTime?: string;
+  /**
+   * The booking has a ticket for the whole direction (e.g. Brighton to London
+   * Bridge) rather than the split-save pair, so that direction is one claim.
+   */
+  outboundDirect?: boolean;
+  returnDirect?: boolean;
 }
 
 /**
@@ -89,12 +95,18 @@ export function findCommuteTimesFromAttachments(
     .map((f) => parseTicketFilename(f, yearHint))
     .filter((l): l is ParsedTicketLeg => l !== null);
 
-  const outboundLeg = legs.find((l) => l.fromCrs === COMMUTE.fromCrs && l.toCrs === COMMUTE.viaCrs);
-  const returnLeg = legs.find((l) => l.fromCrs === COMMUTE.toCrs && l.toCrs === COMMUTE.viaCrs);
+  const outboundDirectLeg = legs.find((l) => l.fromCrs === COMMUTE.fromCrs && l.toCrs === COMMUTE.toCrs);
+  const returnDirectLeg = legs.find((l) => l.fromCrs === COMMUTE.toCrs && l.toCrs === COMMUTE.fromCrs);
+  const outboundLeg =
+    outboundDirectLeg ?? legs.find((l) => l.fromCrs === COMMUTE.fromCrs && l.toCrs === COMMUTE.viaCrs);
+  const returnLeg =
+    returnDirectLeg ?? legs.find((l) => l.fromCrs === COMMUTE.toCrs && l.toCrs === COMMUTE.viaCrs);
 
   return {
     date: outboundLeg?.date ?? returnLeg?.date,
     outboundTime: outboundLeg?.bookedTime,
     returnTime: returnLeg?.bookedTime,
+    ...(outboundDirectLeg && { outboundDirect: true }),
+    ...(returnDirectLeg && { returnDirect: true }),
   };
 }
